@@ -1,290 +1,222 @@
 #include <boost/bind.hpp>
-#include <boost/enable_shared_from_this.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/asio.hpp>
 
 #include <boost/property_tree/ptree.hpp>
-#include <boost/property_tree/ini_parser.hpp>
+#include <boost/property_tree/json_parser.hpp>
+
+#include <boost/program_options/options_description.hpp>
+#include <boost/program_options/variables_map.hpp>
+#include <boost/program_options/parsers.hpp>
+#include <boost/filesystem.hpp>
+#include <boost/algorithm/string.hpp>
 
 #include <Swiften/Swiften.h>
 
+#include "xmpp_agent.h"
+#include "server.h"
+#include "daemon_config.h"
+
 using namespace Swift;
 
-class xmpp_sender
+class xmpp_target_sender : public server::server_callback
 {
 public:
-    xmpp_sender(const JID& jid, const SafeString& password, NetworkFactories* networkFactories, Storages* storages = NULL);
-    virtual ~xmpp_sender();
-
-    bool sendMessage(const std::string & to, const std::string & message);
-
-protected:
-    void handleConnected();
-    void handleRosterReceived(ErrorPayload::ref error);
-    void handlePresenceReceived(Presence::ref presence);
-    void handleMessageReceived(Message::ref message);
-
-private:
-    Swift::Client *     _client;
-};
-
-xmpp_sender::xmpp_sender(const JID& jid, const SafeString& password, NetworkFactories* networkFactories, Storages* storages)
-{
-    _client = new Swift::Client(jid, password, networkFactories, storages);
-    _client->onConnected.connect(boost::bind(&xmpp_sender::handleConnected, this));
-    _client->onMessageReceived.connect(boost::bind(&xmpp_sender::handleMessageReceived, this, _1));
-    _client->onPresenceReceived.connect(boost::bind(&xmpp_sender::handlePresenceReceived, this, _1));
-    _client->setAlwaysTrustCertificates();
-    _client->connect();
-}
-
-xmpp_sender::~xmpp_sender()
-{
-    delete _client;
-}
-
-void xmpp_sender::handleConnected()
-{
-    std::cout << "Connected" << std::endl;
-    // Request the roster
-    GetRosterRequest::ref rosterRequest =
-        GetRosterRequest::create(_client->getIQRouter());
-    rosterRequest->onResponse.connect( boost::bind(&xmpp_sender::handleRosterReceived, this, _2));
-    rosterRequest->send();
-}
-
-void xmpp_sender::handleRosterReceived(ErrorPayload::ref error)
-{
-    if (error) {
-        std::cerr << "Error receiving roster. Continuing anyway.";
-    }
-    // Send initial available presence
-    _client->sendPresence(Presence::create("Send me a message"));
-}
-
-void xmpp_sender::handleMessageReceived(Message::ref message)
-{
-    // Echo back the incoming message
-    message->setTo(message->getFrom());
-    message->setFrom(JID());
-    _client->sendMessage(message);
-}
-
-void xmpp_sender::handlePresenceReceived(Presence::ref presence) {
-    // Automatically approve subscription requests
-    if (presence->getType() == Presence::Subscribe) {
-        Presence::ref response = Presence::create();
-        response->setTo(presence->getFrom());
-        response->setType(Presence::Subscribed);
-        _client->sendPresence(response);
-    }
-}
-
-bool xmpp_sender::sendMessage(const std::string & to, const std::string & message)
-{
-    Message::ref msgobj(new Message);
-    // Echo back the incoming message
-    msgobj->setTo(to);
-    msgobj->setFrom(JID());
-    msgobj->setBody(message);
-
-    _client->sendMessage(msgobj);
-    return true;
-}
-
-class xmpp_target_sender
-{
-public:
-    xmpp_target_sender(xmpp_sender & sender, const std::string & to)
+    typedef std::set<std::string> string_set;
+    xmpp_target_sender(xmpp_agent & sender, const std::string & defaultRecipient, const string_set & allowedRecipients=string_set())
         : _sender(sender)
-        , _to(to)
-        {}
+        , _defaultRecipient(defaultRecipient)
+    {}
 
-    bool send(const std::string & message)
+    virtual bool onMessage(const server::message & msg)
     {
-        return _sender.sendMessage(_to, message);
+        return send(msg.to, msg.cc, msg.subject, msg.body, msg.xml);
     }
 
 private:
-    xmpp_sender & _sender;
-    std::string _to;
-};
-
-using boost::asio::local::stream_protocol;
-
-class session
-  : public boost::enable_shared_from_this<session>
-{
-public:
-  session(boost::asio::io_service& io_service, xmpp_target_sender & sender)
-    : socket_(io_service), _sender(sender)
-  {
-  }
-
-  stream_protocol::socket& socket()
-  {
-    return socket_;
-  }
-
-  void start()
-  {
-    socket_.async_read_some(boost::asio::buffer(data_),
-        boost::bind(&session::handle_read,
-          shared_from_this(),
-          boost::asio::placeholders::error,
-          boost::asio::placeholders::bytes_transferred));
-  }
-
-  void handle_read(const boost::system::error_code& error,
-      size_t bytes_transferred)
-  {
-    if (!error)
+    bool send(const std::string & to, const std::string & cc, const std::string & subject, const std::string & body, bool xml=false)
     {
-      boost::asio::async_write(socket_,
-          boost::asio::buffer(data_, bytes_transferred),
-          boost::bind(&session::handle_write,
-            shared_from_this(),
-            boost::asio::placeholders::error));
-    }
-  }
+        if(body.empty())
+            return false;
 
-  void handle_write(const boost::system::error_code& error)
-  {
-      std::cout << " got message " << data_.c_array() << std::endl;
+        bool ret = false;
+        string_set recipients;
+        boost::split(recipients, to, boost::is_any_of(","));
+        boost::split(recipients, cc, boost::is_any_of(","));
 
-    if (!error)
-    {
-        _sender.send(data_.c_array());
-      socket_.async_read_some(boost::asio::buffer(data_),
-          boost::bind(&session::handle_read,
-            shared_from_this(),
-            boost::asio::placeholders::error,
-            boost::asio::placeholders::bytes_transferred));
-    }
-  }
+        if(recipients.empty() && !_defaultRecipient.empty())
+            recipients.insert(_defaultRecipient);
 
-private:
-  // The socket used to communicate with the client.
-  stream_protocol::socket socket_;
-
-  // Buffer used to store data received from the client.
-  boost::array<char, 1024> data_;
-  xmpp_target_sender & _sender;
-};
-
-typedef boost::shared_ptr<session> session_ptr;
-
-class server
-{
-public:
-  server(boost::asio::io_service& io_service, const std::string& file, xmpp_target_sender & sender)
-    : io_service_(io_service)
-    , acceptor_(io_service, stream_protocol::endpoint(file))
-    , _sender(sender)
-  {
-    session_ptr new_session(new session(io_service_, _sender));
-    acceptor_.async_accept(new_session->socket(),
-        boost::bind(&server::handle_accept, this, new_session,
-          boost::asio::placeholders::error));
-  }
-
-  void handle_accept(session_ptr new_session,
-      const boost::system::error_code& error)
-  {
-    if (!error)
-    {
-      new_session->start();
-      new_session.reset(new session(io_service_, _sender));
-      acceptor_.async_accept(new_session->socket(),
-          boost::bind(&server::handle_accept, this, new_session,
-            boost::asio::placeholders::error));
-    }
-  }
-
-private:
-  boost::asio::io_service& io_service_;
-  stream_protocol::acceptor acceptor_;
-  xmpp_target_sender & _sender;
-};
-
-namespace {
-    std::string expand_user(const std::string & path)
-    {
-        std::string ret = path;
-        if (!ret.empty() && ret[0] == '~')
+        if(recipients.empty())
+            ret = false;
+        else
         {
-            char const* home = getenv("HOME");
-            if(!home)
-                home = getenv("USERPROFILE");
-
-            if (home)
-                ret.replace(0, 1, home);
+            ret = true;
+            for(string_set::const_iterator it = recipients.begin(); it != recipients.end(); it++)
+            {
+                const std::string & recipient = *it;
+                if(!sendTo(_defaultRecipient, subject, body, xml))
+                    ret = false;
+            }
         }
         return ret;
     }
-}
 
-class Config
-{
-public:
-    Config(const std::string & configFile="~/.swifter.conf");
-    virtual ~Config();
+    bool sendTo(const std::string & to, const std::string & subject, const std::string & message, bool xml)
+    {
+        if(!isAllowed(to))
+            return false;
+        return _sender.sendMessage(to, subject, message, xml);
+    }
 
-
-    const std::string & socketFile() const { return _socket_file; }
-    const std::string & xmppJid() const { return _xmpp_jid; }
-    const std::string & xmppPassword() const { return _xmpp_password; }
-    const std::string & xmppRecipient() const { return _xmpp_recipient; }
+    bool isAllowed(const std::string & to)
+    {
+        string_set::const_iterator it = _allowedRecipients.find(to);
+        return (it != _allowedRecipients.end());
+    }
 
 private:
-    void            load();
-private:
-    std::string _configFile;
-
-    std::string _socket_file;
-    std::string _xmpp_jid;
-    std::string _xmpp_recipient;
-    std::string _xmpp_password;
+    xmpp_agent & _sender;
+    std::string _defaultRecipient;
+    string_set _allowedRecipients;
 };
 
-Config::Config(const std::string & configFile)
+class xmpp_daemon
 {
-    _configFile = expand_user(configFile);
+public:
 
-    load();
+    xmpp_daemon(bool debug)
+        : _debug(debug)
+        , _socket_server(NULL)
+    {
+    }
+
+    bool prepare(bool upstart, bool daemon);
+    int run();
+    void cleanup();
+
+    int forward_message(const std::string & subject, const std::string & body, bool xml=false);
+
+private:
+    void removeSocketFile();
+
+private:
+    bool _debug;
+    Config _config;
+    server * _socket_server;
+};
+
+void xmpp_daemon::removeSocketFile()
+{
+    if (boost::filesystem::exists(_config.socketFile()))
+    {
+        if(_debug)
+            std::cout << "Remove old socket file " << _config.socketFile() << std::endl;
+        boost::filesystem::remove(_config.socketFile());
+    }
+
 }
 
-Config::~Config()
+bool xmpp_daemon::prepare(bool upstart, bool daemon)
 {
+    removeSocketFile();
+    return true;
 }
 
-void Config::load()
+int xmpp_daemon::run()
 {
-    boost::property_tree::ptree pt;
-    boost::property_tree::ini_parser::read_ini(_configFile, pt);
-    _socket_file = pt.get<std::string>("Socket", "/tmp/swifter.socket");
-    _xmpp_jid = pt.get<std::string>("JID");
-    _xmpp_recipient = pt.get<std::string>("Recipient");
-    _xmpp_password = pt.get<std::string>("Password");
+    SimpleEventLoop eventLoop;
+    BoostNetworkFactories networkFactories(&eventLoop);
+    boost::shared_ptr<boost::asio::io_service> io_service = networkFactories.getIOServiceThread()->getIOService();
+
+    xmpp_agent agent(_config.xmppJid(), _config.xmppPassword(), &networkFactories);
+    xmpp_target_sender target_sender(agent, _config.xmppDefaultRecipient(), _config.allowedXmppRecipients());
+
+    _socket_server = new server(*io_service, _config.socketFile(), target_sender);
+
+    eventLoop.run();
 }
 
+void xmpp_daemon::cleanup()
+{
+    removeSocketFile();
+}
+int xmpp_daemon::forward_message(const std::string & subject, const std::string& body, bool xml)
+{
+    SimpleEventLoop eventLoop;
+    BoostNetworkFactories networkFactories(&eventLoop);
+    boost::shared_ptr<boost::asio::io_service> io_service = networkFactories.getIOServiceThread()->getIOService();
 
+    client * cl = new client(*io_service, _config.socketFile());
+    client::message msg;
+    msg.subject = subject;
+    msg.body = body;
+    msg.xml = xml;
+    cl->send(msg);
+
+    eventLoop.run();
+    return 0;
+}
+
+namespace po = boost::program_options;
 
 int main(int argc, char** argv)
 {
-    Config config;
-    SimpleEventLoop eventLoop;
-    BoostNetworkFactories networkFactories(&eventLoop);
+    int ret;
+    // Declare the supported options.
+    po::options_description desc("Allowed options");
+    desc.add_options()
+    ("help", "produce help message")
+    ("debug", "enable debug mode")
+    ("daemon", "run in the background as daemon.")
+    ("upstart", "run in the inside upstart.")
+    ("user", po::value<std::string>(), "user to run the daemon.")
+    ("group", po::value<std::string>(), "group to run the daemon.")
+    ("subject", po::value<std::string>(), "message subject to send through the daemon.")
+    ("body", po::value<std::string>(), "message body to send through the daemon.")
+    ("xml", "if specified the given message is treated as XML message instead of plain text.")
+    ;
 
-    boost::shared_ptr<boost::asio::io_service> io_service = networkFactories.getIOServiceThread()->getIOService();
+    po::variables_map vm;
+    po::store(po::parse_command_line(argc, argv, desc), vm);
+    po::notify(vm);
 
-    xmpp_sender sender(config.xmppJid(), config.xmppPassword(), &networkFactories);
-    xmpp_target_sender target_sender(sender, config.xmppRecipient());
+    if (vm.count("help"))
+    {
+        std::cout << desc << "\n";
+        ret = 0;
+    }
+    else
+    {
+        bool debug = vm.count("debug") != 0;
+        bool daemon = vm.count("daemon") != 0;
+        bool upstart = vm.count("upstart") != 0;
+        bool xml_message = vm.count("xml") != 0;
+        std::string body;
+        std::string subject;
+        if (vm.count("body"))
+            body = vm["body"].as<std::string>();
+        if (vm.count("subject"))
+            subject = vm["subject"].as<std::string>();
 
-    std::remove(config.socketFile().c_str());
-    server s(*io_service, config.socketFile(), target_sender);
+        xmpp_daemon app(debug);
 
-    eventLoop.run();
+        std::cout << "body: " << body << std::endl;
 
-    return 0;
+        if(body.empty())
+        {
+            if(!app.prepare(upstart, daemon))
+                ret = 1;
+            else
+            {
+                ret = app.run();
+                app.cleanup();
+            }
+        }
+        else
+        {
+            app.forward_message(subject, body, xml_message);
+        }
+    }
+    return ret;
 }
