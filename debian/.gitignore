@@ -1,0 +1,5 @@
+/arsoft-xmpp-daemon/
+/*.substvars
+/files
+/*.debhelper.log
+/*.debhelper

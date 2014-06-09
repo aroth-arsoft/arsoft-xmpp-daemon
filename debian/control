@@ -1,0 +1,14 @@
+Source: arsoft-xmpp-daemon
+Section: admin
+Priority: extra
+Maintainer: Andreas Roth <aroth@arsoft-online.com>
+Build-Depends: debhelper (>= 9), libswiften-dev (>= 2.0)
+Standards-Version: 3.9.5
+Homepage: http://www.arsoft-online.com
+
+Package: arsoft-xmpp-daemon
+Architecture: amd64 i386
+Depends: libswiften2 (>= 2.0)
+Description: XMPP relay daemon for system monitoring notifications
+ Background XMPP relay daemon to forwards notifications from the system
+ or monitoring suite to a configured number of recipients.
