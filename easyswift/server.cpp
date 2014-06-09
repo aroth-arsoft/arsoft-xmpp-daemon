@@ -38,6 +38,7 @@ std::ostream& operator <<(std::ostream& stream, const unix_socket_package_header
 void write_message(const socket_base::message & msg, boost::asio::streambuf & buf)
 {
     boost::property_tree::ptree pt;
+    pt.put("messageid", msg.messageId);
     pt.put("xml", msg.xml);
     if(!msg.to.empty())
         pt.put("to", msg.to);
@@ -67,6 +68,7 @@ void read_message(socket_base::message & msg, const std::string & buf)
 
     std::istringstream json_message_stream (buf);
     boost::property_tree::read_json (json_message_stream, pt);
+    msg.messageId = pt.get<uint64_t>("messageid", 0u);
     msg.body = pt.get<std::string>("body", std::string());
     msg.subject = pt.get<std::string>("subject", std::string());
     msg.to = pt.get<std::string>("to", std::string());
@@ -78,6 +80,7 @@ void read_message(socket_base::message & msg, const std::string & buf)
 void write_response(const socket_base::response & response, boost::asio::streambuf & buf)
 {
     boost::property_tree::ptree pt;
+    pt.put("messageid", response.messageId);
     pt.put("success", response.success);
     pt.put("message", response.error_message);
 
@@ -100,6 +103,7 @@ void read_response(socket_base::response & response, const std::string & buf)
 
     std::istringstream json_message_stream (buf);
     boost::property_tree::read_json (json_message_stream, pt);
+    response.messageId = pt.get<uint64_t>("messageid", 0u);
     response.error_message = pt.get<std::string>("message", std::string());
     response.success = pt.get<bool>("success", false);
 
@@ -146,13 +150,16 @@ public:
                 else
                     current_header = NULL;
 
-                std::cout << "got message to=" << msg.to << " cc=" << msg.cc << " xml=" << msg.xml << " sub=" << msg.subject << " body=" << msg.body << std::endl;
+                std::cout << "got message id=" << msg.messageId << " to=" << msg.to << " cc=" << msg.cc << " xml=" << msg.xml << " sub=" << msg.subject << " body=" << msg.body << std::endl;
 
                 bool success = _callback.onMessage(msg);
 
                 response resp;
+                resp.messageId = msg.messageId;
                 resp.success = success;
                 resp.error_message = success?"ok":"error";
+
+                std::cout << "send response id=" << resp.messageId << " success=" << resp.success << std::endl;
 
                 boost::asio::streambuf buf;
                 write_response(resp, buf);
@@ -248,7 +255,9 @@ bool client::send_next_message()
         boost::asio::streambuf buf;
         write_message(msg, buf);
 
-        std::cout << "send next message\n";
+        _send_messages.push(msg);
+
+        std::cout << "send next message id=" << msg.messageId << std::endl;
 
         // The connection was successful. Send the request.
         boost::asio::async_write(_socket, buf,
@@ -305,9 +314,22 @@ void client::handle_read(const boost::system::error_code& err, size_t bytes_tran
         else
             current_header = NULL;
 
-        std::cout << "response " << resp.success << " msg=" << resp.error_message << "\n";
+        message first_sent_msg = _send_messages.front();
+        _send_messages.pop();
+
+        if(first_sent_msg.messageId == resp.messageId)
+        {
+            std::cout << "response id=" << resp.messageId << " success=" << resp.success << " msg=" << resp.error_message << "\n";
+        }
     }
 
+    if(_messages.empty() && _send_messages.empty())
+    {
+        std::cout << "All messages sent" << std::endl;
+        // The deadline has passed. The socket is closed so that any outstanding
+        // asynchronous operations are cancelled.
+        _completeHandler(this);
+    }
 }
 
 void client::handle_write(const boost::system::error_code& err)
@@ -340,15 +362,18 @@ void client::handle_deadline()
         // There is no longer an active deadline. The expiry is set to positive
         // infinity so that the actor takes no action until a new deadline is set.
         deadline_.expires_at(boost::posix_time::pos_infin);
+
+        _completeHandler(this);
     }
 
     // Put the actor back to sleep.
     deadline_.async_wait(boost::bind(&client::handle_deadline, this));
 }
 
-bool client::send(const message & msg, unsigned timeout)
+bool client::send(const message & msg, const boost::function<void(client* client)> & completeHandler, unsigned timeout)
 {
     bool was_empty = _messages.empty();
+    _completeHandler = completeHandler;
     _messages.push(msg);
     if(was_empty && _connected)
         send_next_message();

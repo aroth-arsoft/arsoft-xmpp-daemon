@@ -1,6 +1,7 @@
 #pragma once
 
 #include <queue>
+#include <boost/function.hpp>
 
 class socket_base
 {
@@ -8,8 +9,9 @@ public:
     struct message
     {
         message()
-            : xml(false) {}
+            : messageId(0), xml(false) {}
 
+        uint64_t messageId;
         std::string to;
         std::string cc;
         std::string subject;
@@ -20,8 +22,9 @@ public:
     struct response
     {
         response()
-            : success(false) {}
+            : messageId(0), success(false) {}
 
+        uint64_t messageId;
         bool success;
         std::string error_message;
     };
@@ -61,7 +64,7 @@ class client : public socket_base
 public:
     client(boost::asio::io_service& io_service, const std::string& file);
 
-    bool send(const message & msg, unsigned timeout=5000);
+    bool send(const message & msg, const boost::function<void(client* client)> & completeHandler, unsigned timeout=5000);
 
 private:
     void handle_connect(const boost::system::error_code& err);
@@ -75,7 +78,9 @@ private:
     boost::asio::local::stream_protocol::socket _socket;
     boost::asio::streambuf response_;
     message_queue _messages;
+    message_queue _send_messages;
     boost::asio::deadline_timer deadline_;
+    boost::function<void(client* client)> _completeHandler;
     boost::array<char, 1024> data_;
     std::string pending_data_;
     bool _connected;

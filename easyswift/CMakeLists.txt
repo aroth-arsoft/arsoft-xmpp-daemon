@@ -15,4 +15,4 @@ add_executable(easyswift
     server.h
     )
 
-target_link_libraries (easyswift Swiften boost_system boost_signals boost_program_options boost_filesystem)
+target_link_libraries (easyswift Swiften boost_system boost_signals boost_program_options boost_filesystem pthread)
