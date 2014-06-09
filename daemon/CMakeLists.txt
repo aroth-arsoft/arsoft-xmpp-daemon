@@ -1,11 +1,9 @@
-cmake_minimum_required(VERSION 2.8)
-
-project(easyswift)
-
-
 add_definitions(-DBOOST_SIGNALS_NO_DEPRECATION_WARNING)
 
-add_executable(easyswift
+include_directories(${SWIFTEN_INCLUDE_DIR})
+include_directories(${Boost_INCLUDE_DIRS})
+
+add_executable(arsoft-xmpp-daemon
     main.cpp
     xmpp_agent.cpp
     xmpp_agent.h
@@ -17,4 +15,6 @@ add_executable(easyswift
     xhtml_payload.cpp
     )
 
-target_link_libraries (easyswift Swiften boost_system boost_signals boost_program_options boost_filesystem pthread)
+target_link_libraries (arsoft-xmpp-daemon ${SWIFTEN_LIBRARY} ${Boost_LIBRARIES} pthread)
+install(TARGETS arsoft-xmpp-daemon RUNTIME DESTINATION bin)
+

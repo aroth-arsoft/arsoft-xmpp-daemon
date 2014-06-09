@@ -1,5 +1,11 @@
 #!/usr/bin/make -f
 # -*- makefile -*-
 
+DEB_CMAKE_EXTRA_FLAGS += -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
 %:
 	dh $@
+
+override_dh_clean:
+	dh_clean
+	-rm -rf build
