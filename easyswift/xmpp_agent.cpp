@@ -1,13 +1,15 @@
 #include <Swiften/Swiften.h>
 #include "xmpp_agent.h"
+#include "xhtml_payload.h"
 
 using namespace Swift;
 
 class xmpp_agent::Callbacks
 {
 public:
-    Callbacks(xmpp_agent * owner)
+    Callbacks(xmpp_agent * owner, const std::string & statusMessage)
         : _owner(owner)
+        , _statusMessage(statusMessage)
         {
             _owner->_client->onConnected.connect(boost::bind(&xmpp_agent::Callbacks::handleConnected, this));
             _owner->_client->onMessageReceived.connect(boost::bind(&xmpp_agent::Callbacks::handleMessageReceived, this, _1));
@@ -30,7 +32,7 @@ public:
             std::cerr << "Error receiving roster. Continuing anyway.";
         }
         // Send initial available presence
-        _owner->_client->sendPresence(Presence::create("Send me a message"));
+        _owner->_client->sendPresence(Presence::create(_statusMessage));
     }
 
     void handleMessageReceived(Message::ref message)
@@ -53,13 +55,16 @@ public:
 
 private:
     xmpp_agent * _owner;
+    std::string _statusMessage;
 };
 
-xmpp_agent::xmpp_agent(const JID& jid, const SafeString& password, NetworkFactories* networkFactories, Storages* storages)
+xmpp_agent::xmpp_agent(const JID& jid, const SafeString& password, const std::string & statusMessage, NetworkFactories* networkFactories, Storages* storages)
 {
     _client = new Client(jid, password, networkFactories, storages);
+    _client->addPayloadParserFactory(new GenericPayloadParserFactory<Swift::XHTMLIMParser>("html", "http://jabber.org/protocol/xhtml-im"));
+    _client->addPayloadSerializer(new Swift::XHTMLIMSerializer());
     _client->setAlwaysTrustCertificates();
-    _callbacks = new Callbacks(this);
+    _callbacks = new Callbacks(this, statusMessage);
     _client->connect();
 }
 
@@ -76,7 +81,10 @@ bool xmpp_agent::sendMessage(const std::string & to, const std::string & subject
     msgobj->setTo(to);
     msgobj->setFrom(JID());
     msgobj->setSubject(subject);
-    msgobj->setBody(message);
+    if(xml)
+        msgobj->addPayload(boost::make_shared<Swift::XHTMLIMPayload>(message));
+    else
+        msgobj->setBody(message);
     msgobj->setType(Message::Chat);
 
     _client->sendMessage(msgobj);

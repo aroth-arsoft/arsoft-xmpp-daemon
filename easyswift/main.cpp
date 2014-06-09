@@ -29,39 +29,55 @@ class xmpp_target_sender : public server::server_callback
 {
 public:
     typedef std::set<std::string> string_set;
-    xmpp_target_sender(xmpp_agent & sender, const std::string & defaultRecipient, const string_set & allowedRecipients=string_set())
+    xmpp_target_sender(xmpp_agent & sender, const Config & config)
         : _sender(sender)
-        , _defaultRecipient(defaultRecipient)
+        , _config(config)
+        , _lastError()
     {}
 
-    virtual bool onMessage(const server::message & msg)
+    virtual bool onMessage(const server::message & msg, server::response & resp)
     {
-        return send(msg.to, msg.cc, msg.subject, msg.body, msg.xml);
+        bool ret = send(msg.to, msg.cc, msg.subject, msg.body, msg.xml);
+        resp.success = ret;
+        resp.error_message = resp.success?"ok":_lastError;
+        return ret;
     }
+
+    const std::string & lastError() const { return _lastError; }
 
 private:
     bool send(const std::string & to, const std::string & cc, const std::string & subject, const std::string & body, bool xml=false)
     {
         if(body.empty())
+        {
+            _lastError = "No body specified.";
             return false;
+        }
 
         bool ret = false;
         string_set recipients;
-        boost::split(recipients, to, boost::is_any_of(","));
-        boost::split(recipients, cc, boost::is_any_of(","));
+        if(!to.empty())
+            boost::split(recipients, to, boost::is_any_of(","), boost::token_compress_on);
+        if(!cc.empty())
+            boost::split(recipients, cc, boost::is_any_of(","), boost::token_compress_on);
 
-        if(recipients.empty() && !_defaultRecipient.empty())
-            recipients.insert(_defaultRecipient);
+        if(recipients.empty() && !_config.xmppDefaultRecipient().empty())
+            recipients.insert(_config.xmppDefaultRecipient());
+
+        std::cout << "num recp =" << recipients.size() << std::endl;
 
         if(recipients.empty())
+        {
+            _lastError = "No recipient specified.";
             ret = false;
+        }
         else
         {
             ret = true;
             for(string_set::const_iterator it = recipients.begin(); it != recipients.end(); it++)
             {
                 const std::string & recipient = *it;
-                if(!sendTo(_defaultRecipient, subject, body, xml))
+                if(!sendTo(recipient, subject, body, xml))
                     ret = false;
             }
         }
@@ -70,21 +86,30 @@ private:
 
     bool sendTo(const std::string & to, const std::string & subject, const std::string & message, bool xml)
     {
+        bool ret;
         if(!isAllowed(to))
-            return false;
-        return _sender.sendMessage(to, subject, message, xml);
+        {
+            _lastError = "Recipient " + to + " is not allowed.";
+            ret = false;
+        }
+        else
+        {
+            ret = _sender.sendMessage(to, subject, message, xml);
+        }
+        return ret;
     }
 
     bool isAllowed(const std::string & to)
     {
-        string_set::const_iterator it = _allowedRecipients.find(to);
-        return (it != _allowedRecipients.end());
+        const string_set & allowedRecipients = _config.allowedXmppRecipients();
+        string_set::const_iterator it = allowedRecipients.find(to);
+        return (it != allowedRecipients.end());
     }
 
 private:
     xmpp_agent & _sender;
-    std::string _defaultRecipient;
-    string_set _allowedRecipients;
+    const Config & _config;
+    std::string _lastError;
 };
 
 class xmpp_daemon
@@ -95,13 +120,14 @@ public:
         : _debug(debug)
         , _socket_server(NULL)
     {
+        std::cout << _config;
     }
 
     bool prepare(bool upstart, bool daemon, bool foreground);
     int run();
     void cleanup();
 
-    int forward_message(const std::string & subject, const std::string & body, bool xml=false);
+    int forward_message(const std::string & to, const std::string & cc, const std::string & subject, const std::string & body, bool xml=false);
 
 private:
     void removeSocketFile();
@@ -255,8 +281,8 @@ int xmpp_daemon::run()
 {
     boost::shared_ptr<boost::asio::io_service> io_service = _networkFactories->getIOServiceThread()->getIOService();
 
-    xmpp_agent agent(_config.xmppJid(), _config.xmppPassword(), _networkFactories);
-    xmpp_target_sender target_sender(agent, _config.xmppDefaultRecipient(), _config.allowedXmppRecipients());
+    xmpp_agent agent(_config.xmppJid(), _config.xmppPassword(), _config.xmppStatusMessage(), _networkFactories);
+    xmpp_target_sender target_sender(agent, _config);
 
     _socket_server = new server(*io_service, _config.socketFile(), target_sender);
 
@@ -279,7 +305,7 @@ void xmpp_daemon::completeHandler(client * client)
     _eventLoop->stop();
 }
 
-int xmpp_daemon::forward_message(const std::string & subject, const std::string& body, bool xml)
+int xmpp_daemon::forward_message(const std::string & to, const std::string & cc, const std::string & subject, const std::string& body, bool xml)
 {
     _eventLoop = new SimpleEventLoop;
     _networkFactories = new BoostNetworkFactories (_eventLoop);
@@ -288,6 +314,8 @@ int xmpp_daemon::forward_message(const std::string & subject, const std::string&
     client * cl = new client(*io_service, _config.socketFile());
     client::message msg;
     msg.messageId = time(NULL);
+    msg.to = to;
+    msg.cc = cc;
     msg.subject = subject;
     msg.body = body;
     msg.xml = xml;
@@ -312,6 +340,8 @@ int main(int argc, char** argv)
     ("upstart", "run in the inside upstart.")
     ("user", po::value<std::string>(), "user to run the daemon.")
     ("group", po::value<std::string>(), "group to run the daemon.")
+    ("to", po::value<std::string>(), "specify recipient of the message.")
+    ("cc", po::value<std::string>(), "specify carbon copy recipient of the message.")
     ("subject", po::value<std::string>(), "message subject to send through the daemon.")
     ("body", po::value<std::string>(), "message body to send through the daemon.")
     ("xml", "if specified the given message is treated as XML message instead of plain text.")
@@ -323,7 +353,7 @@ int main(int argc, char** argv)
 
     if (vm.count("help"))
     {
-        std::cout << desc << "\n";
+        std::cout << desc << std::endl;
         ret = 0;
     }
     else
@@ -333,16 +363,20 @@ int main(int argc, char** argv)
         bool foreground = vm.count("foreground") != 0;
         bool upstart = vm.count("upstart") != 0;
         bool xml_message = vm.count("xml") != 0;
+        std::string to;
+        std::string cc;
         std::string body;
         std::string subject;
+        if (vm.count("to"))
+            to = vm["to"].as<std::string>();
+        if (vm.count("cc"))
+            cc = vm["cc"].as<std::string>();
         if (vm.count("body"))
             body = vm["body"].as<std::string>();
         if (vm.count("subject"))
             subject = vm["subject"].as<std::string>();
 
         xmpp_daemon app(debug);
-
-        std::cout << "body: " << body << std::endl;
 
         if(body.empty())
         {
@@ -356,7 +390,7 @@ int main(int argc, char** argv)
         }
         else
         {
-            app.forward_message(subject, body, xml_message);
+            app.forward_message(to, cc, subject, body, xml_message);
         }
     }
     return ret;

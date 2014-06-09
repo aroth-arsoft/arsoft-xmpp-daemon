@@ -13,6 +13,8 @@ add_executable(easyswift
     daemon_config.h
     server.cpp
     server.h
+    xhtml_payload.h
+    xhtml_payload.cpp
     )
 
 target_link_libraries (easyswift Swiften boost_system boost_signals boost_program_options boost_filesystem pthread)

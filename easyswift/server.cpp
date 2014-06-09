@@ -152,12 +152,9 @@ public:
 
                 std::cout << "got message id=" << msg.messageId << " to=" << msg.to << " cc=" << msg.cc << " xml=" << msg.xml << " sub=" << msg.subject << " body=" << msg.body << std::endl;
 
-                bool success = _callback.onMessage(msg);
-
                 response resp;
                 resp.messageId = msg.messageId;
-                resp.success = success;
-                resp.error_message = success?"ok":"error";
+                bool success = _callback.onMessage(msg, resp);
 
                 std::cout << "send response id=" << resp.messageId << " success=" << resp.success << std::endl;
 
