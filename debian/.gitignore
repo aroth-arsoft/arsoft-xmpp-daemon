@@ -3,3 +3,5 @@
 /files
 /*.debhelper.log
 /*.debhelper
+/arsoft-xmpp-daemon-dbg/
+/tmp/

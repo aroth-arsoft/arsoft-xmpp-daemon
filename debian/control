@@ -12,3 +12,11 @@ Depends: libswiften2 (>= 2.0), ${misc:Depends}, ${shlibs:Depends}
 Description: XMPP relay daemon for system monitoring notifications
  Background XMPP relay daemon to forwards notifications from the system
  or monitoring suite to a configured number of recipients.
+
+Package: arsoft-xmpp-daemon-dbg
+Architecture: any
+Section: debug
+Priority: extra
+Depends: arsoft-xmpp-daemon (= ${binary:Version}), ${misc:Depends}
+Description: debugging symbols for arsoft-xmpp-daemon
+ This package contains the debugging symbols for arsoft-xmpp-daemon.
