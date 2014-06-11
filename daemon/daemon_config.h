@@ -24,7 +24,7 @@ public:
     friend std::ostream& operator<< (std::ostream& stream, const Config& config);
 
 private:
-    void            load();
+    bool            load(bool configRequired);
 private:
     std::string _configFile;
 

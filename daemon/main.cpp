@@ -124,12 +124,14 @@ class xmpp_daemon
 {
 public:
 
-    xmpp_daemon(const std::string & configFile, bool debug)
+    xmpp_daemon(const std::string & configFile, const std::string & socketFile, bool debug)
         : _debug(debug)
         , _config(configFile)
+        , _socketFile(socketFile)
         , _socket_server(NULL)
     {
-        std::cout << _config;
+        if(_socketFile.empty())
+            _socketFile = _config.socketFile();
     }
 
     bool prepare(bool upstart, bool daemon, bool foreground);
@@ -145,6 +147,7 @@ private:
 private:
     bool _debug;
     Config _config;
+    std::string _socketFile;
     server * _socket_server;
     SimpleEventLoop * _eventLoop;
     BoostNetworkFactories * _networkFactories;
@@ -152,11 +155,11 @@ private:
 
 void xmpp_daemon::removeSocketFile()
 {
-    if (boost::filesystem::exists(_config.socketFile()))
+    if (boost::filesystem::exists(_socketFile))
     {
         if(_debug)
-            std::cout << "Remove old socket file " << _config.socketFile() << std::endl;
-        boost::filesystem::remove(_config.socketFile());
+            std::cout << "Remove old socket file " << _socketFile << std::endl;
+        boost::filesystem::remove(_socketFile);
     }
 
 }
@@ -165,13 +168,30 @@ bool xmpp_daemon::prepare(bool upstart, bool daemon, bool foreground)
 {
     removeSocketFile();
 
+    bool configOk = true;
+    if(upstart || daemon || foreground)
+    {
+        if(_config.xmppJid().empty())
+        {
+            std::cerr << "No XMPP JID configured." << std::endl;
+            configOk = false;
+        }
+        if(_config.xmppPassword().empty())
+        {
+            std::cerr << "No password for XMPP JID configured." << std::endl;
+            configOk = false;
+        }
+    }
+
+    if(!configOk)
+        return false;
+
     _eventLoop = new SimpleEventLoop();
     _networkFactories = new BoostNetworkFactories(_eventLoop);
 
-    boost::shared_ptr<boost::asio::io_service> io_service = _networkFactories->getIOServiceThread()->getIOService();
-
     if(daemon)
     {
+        boost::shared_ptr<boost::asio::io_service> io_service = _networkFactories->getIOServiceThread()->getIOService();
         if(!foreground)
         {
             // Register signal handlers so that the daemon may be shut down. You may
@@ -293,7 +313,7 @@ int xmpp_daemon::run()
     xmpp_agent agent(_config.xmppJid(), _config.xmppPassword(), _config.xmppStatusMessage(), _networkFactories);
     xmpp_target_sender target_sender(agent, _config);
 
-    _socket_server = new server(*io_service, _config.socketFile(), target_sender);
+    _socket_server = new server(*io_service, _socketFile, target_sender);
 
     _eventLoop->run();
 }
@@ -320,7 +340,7 @@ int xmpp_daemon::forward_message(const std::string & to, const std::string & cc,
     _networkFactories = new BoostNetworkFactories (_eventLoop);
     boost::shared_ptr<boost::asio::io_service> io_service = _networkFactories->getIOServiceThread()->getIOService();
 
-    client * cl = new client(*io_service, _config.socketFile());
+    client * cl = new client(*io_service, _socketFile);
     client::message msg;
     msg.messageId = time(NULL);
     msg.to = to;
@@ -347,6 +367,7 @@ int main(int argc, char** argv)
     ("daemon", "run in the background as daemon.")
     ("foreground", "run in the foreground.")
     ("upstart", "run in the inside upstart.")
+    ("socket", po::value<std::string>(), "socket file to communicate with the background daemon.")
     ("config", po::value<std::string>(), "specifies the configuration file to use.")
     ("user", po::value<std::string>(), "user to run the daemon.")
     ("group", po::value<std::string>(), "group to run the daemon.")
@@ -374,12 +395,15 @@ int main(int argc, char** argv)
         bool upstart = vm.count("upstart") != 0;
         bool xml_message = vm.count("xml") != 0;
         std::string configFile;
+        std::string socketFile;
         std::string to;
         std::string cc;
         std::string body;
         std::string subject;
         if (vm.count("config"))
             configFile = vm["config"].as<std::string>();
+        if (vm.count("socket"))
+            socketFile = vm["socket"].as<std::string>();
         if (vm.count("to"))
             to = vm["to"].as<std::string>();
         if (vm.count("cc"))
@@ -389,7 +413,7 @@ int main(int argc, char** argv)
         if (vm.count("subject"))
             subject = vm["subject"].as<std::string>();
 
-        xmpp_daemon app(configFile, debug);
+        xmpp_daemon app(configFile, socketFile, debug);
 
         if(body.empty())
         {

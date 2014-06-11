@@ -289,6 +289,14 @@ void client::handle_connect(const boost::system::error_code& err)
     else
     {
         std::cout << "handle_connect Error: " << err.message() << "\n";
+
+        _socket.close();
+
+        // There is no longer an active deadline. The expiry is set to positive
+        // infinity so that the actor takes no action until a new deadline is set.
+        deadline_.expires_at(boost::posix_time::pos_infin);
+
+        _completeHandler(this);
     }
 }
 

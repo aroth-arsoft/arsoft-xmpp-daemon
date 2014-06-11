@@ -46,32 +46,44 @@ Config::Config()
 
 Config::Config(const std::string & configFile)
 {
+    bool configRequired = !configFile.empty();
     if(configFile.empty())
         _configFile = expand_user(defaultConfigFile());
     else
         _configFile = expand_user(configFile);
 
-    load();
+    load(configRequired);
 }
 
 Config::~Config()
 {
 }
 
-void Config::load()
+bool Config::load(bool configRequired)
 {
-    boost::property_tree::ptree pt;
-    boost::property_tree::ini_parser::read_ini(_configFile, pt);
-    _socket_file = pt.get<std::string>("Socket", "/tmp/swifter.socket");
-    _xmpp_jid = pt.get<std::string>("JID", std::string());
-    std::string recipients = pt.get<std::string>("AllowedRecipients", std::string());
-    if(!recipients.empty())
-        boost::split(_allowed_xmpp_recipients, recipients, boost::is_any_of(","), boost::token_compress_on);
-    else
-        _allowed_xmpp_recipients.clear();
-    _xmpp_default_recipient = pt.get<std::string>("DefaultRecipient", std::string());
-    _xmpp_password = pt.get<std::string>("Password", std::string());
-    _xmpp_status_message = pt.get<std::string>("StatusMessage", std::string());
+    bool ret = false;
+    try
+    {
+        boost::property_tree::ptree pt;
+        boost::property_tree::ini_parser::read_ini(_configFile, pt);
+        _socket_file = pt.get<std::string>("Socket", "/tmp/swifter.socket");
+        _xmpp_jid = pt.get<std::string>("JID", std::string());
+        std::string recipients = pt.get<std::string>("AllowedRecipients", std::string());
+        if(!recipients.empty())
+            boost::split(_allowed_xmpp_recipients, recipients, boost::is_any_of(","), boost::token_compress_on);
+        else
+            _allowed_xmpp_recipients.clear();
+        _xmpp_default_recipient = pt.get<std::string>("DefaultRecipient", std::string());
+        _xmpp_password = pt.get<std::string>("Password", std::string());
+        _xmpp_status_message = pt.get<std::string>("StatusMessage", std::string());
+        ret = true;
+    }
+    catch(const boost::property_tree::ptree_error &e)
+    {
+        if(configRequired)
+            std::cerr << "Failed to read config file " << _configFile << "; Error " << e.what() << std::endl;
+    }
+    return ret;
 }
 
 std::ostream& operator<< (std::ostream& stream, const Config& config)
