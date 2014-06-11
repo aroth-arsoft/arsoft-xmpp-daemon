@@ -1,2 +1,3 @@
+etc/arsoft/xmpp-daemon
 etc/init
 usr/bin/arsoft-xmpp-daemon

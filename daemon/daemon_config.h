@@ -8,7 +8,10 @@ class Config
 public:
     typedef std::set<std::string>   string_set;
 
-    Config(const std::string & configFile="~/.swifter.conf");
+    static const std::string & defaultConfigFile();
+    static const std::string & defaultSocketFile();
+    Config();
+    Config(const std::string & configFile);
     virtual ~Config();
 
     const std::string & socketFile() const { return _socket_file; }

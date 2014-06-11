@@ -13,3 +13,7 @@ install(FILES
             upstart/arsoft-xmpp-daemon-setup.conf
             upstart/arsoft-xmpp-daemon.conf
         DESTINATION ../etc/init)
+
+install(FILES
+            config/daemon.conf
+        DESTINATION ../etc/arsoft/xmpp-daemon)

@@ -102,8 +102,16 @@ private:
     bool isAllowed(const std::string & to)
     {
         const string_set & allowedRecipients = _config.allowedXmppRecipients();
-        string_set::const_iterator it = allowedRecipients.find(to);
-        return (it != allowedRecipients.end());
+        if(allowedRecipients.empty())
+        {
+            // when the set is empty all recipients are considered allowed.
+            return true;
+        }
+        else
+        {
+            string_set::const_iterator it = allowedRecipients.find(to);
+            return (it != allowedRecipients.end());
+        }
     }
 
 private:
@@ -116,8 +124,9 @@ class xmpp_daemon
 {
 public:
 
-    xmpp_daemon(bool debug)
+    xmpp_daemon(const std::string & configFile, bool debug)
         : _debug(debug)
+        , _config(configFile)
         , _socket_server(NULL)
     {
         std::cout << _config;
@@ -338,6 +347,7 @@ int main(int argc, char** argv)
     ("daemon", "run in the background as daemon.")
     ("foreground", "run in the foreground.")
     ("upstart", "run in the inside upstart.")
+    ("config", po::value<std::string>(), "specifies the configuration file to use.")
     ("user", po::value<std::string>(), "user to run the daemon.")
     ("group", po::value<std::string>(), "group to run the daemon.")
     ("to", po::value<std::string>(), "specify recipient of the message.")
@@ -363,10 +373,13 @@ int main(int argc, char** argv)
         bool foreground = vm.count("foreground") != 0;
         bool upstart = vm.count("upstart") != 0;
         bool xml_message = vm.count("xml") != 0;
+        std::string configFile;
         std::string to;
         std::string cc;
         std::string body;
         std::string subject;
+        if (vm.count("config"))
+            configFile = vm["config"].as<std::string>();
         if (vm.count("to"))
             to = vm["to"].as<std::string>();
         if (vm.count("cc"))
@@ -376,7 +389,7 @@ int main(int argc, char** argv)
         if (vm.count("subject"))
             subject = vm["subject"].as<std::string>();
 
-        xmpp_daemon app(debug);
+        xmpp_daemon app(configFile, debug);
 
         if(body.empty())
         {

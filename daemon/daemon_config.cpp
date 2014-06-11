@@ -21,9 +21,35 @@ namespace {
     }
 }
 
+const std::string & Config::defaultConfigFile()
+{
+    static std::string s_defaultConfigFile("~/.arsoft/xmpp-daemon.conf");
+    return s_defaultConfigFile;
+}
+
+const std::string & Config::defaultSocketFile()
+{
+    static std::string s_defaultSocketFile("/run/arsoft-xmpp-daemon/socket");
+    return s_defaultSocketFile;
+}
+
+Config::Config()
+    : _configFile()
+    , _socket_file()
+    , _xmpp_jid()
+    , _xmpp_default_recipient()
+    , _allowed_xmpp_recipients()
+    , _xmpp_password()
+    , _xmpp_status_message()
+{
+}
+
 Config::Config(const std::string & configFile)
 {
-    _configFile = expand_user(configFile);
+    if(configFile.empty())
+        _configFile = expand_user(defaultConfigFile());
+    else
+        _configFile = expand_user(configFile);
 
     load();
 }
