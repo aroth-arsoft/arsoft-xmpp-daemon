@@ -65,14 +65,20 @@ xmpp_agent::xmpp_agent(const JID& jid, const SafeString& password, const std::st
     _client->addPayloadSerializer(new Swift::XHTMLIMSerializer());
     _client->setAlwaysTrustCertificates();
     _callbacks = new Callbacks(this, statusMessage);
-    _client->connect();
 }
 
 xmpp_agent::~xmpp_agent()
 {
+    if(_client->isActive())
+        _client->disconnect();
     delete _client;
 }
 
+bool xmpp_agent::connect()
+{
+    _client->connect();
+    return _client->isActive();
+}
 
 bool xmpp_agent::sendMessage(const std::string & to, const std::string & subject, const std::string & message, bool xml)
 {

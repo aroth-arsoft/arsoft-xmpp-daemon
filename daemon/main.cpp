@@ -308,14 +308,30 @@ bool xmpp_daemon::prepare(bool upstart, bool daemon, bool foreground)
 
 int xmpp_daemon::run()
 {
+    int ret = 0;
     boost::shared_ptr<boost::asio::io_service> io_service = _networkFactories->getIOServiceThread()->getIOService();
 
     xmpp_agent agent(_config.xmppJid(), _config.xmppPassword(), _config.xmppStatusMessage(), _networkFactories);
     xmpp_target_sender target_sender(agent, _config);
 
-    _socket_server = new server(*io_service, _socketFile, target_sender);
+    try
+    {
+        _socket_server = new server(*io_service, _socketFile, target_sender);
+    }
+    catch(std::exception & e)
+    {
+        std::cerr << "Exception: " << e.what() << std::endl;
+        ret = 1;
+    }
 
-    _eventLoop->run();
+    if(_socket_server)
+    {
+        // now everything is ready and we can try to connect the XMPP server
+        agent.connect();
+        _eventLoop->run();
+        ret = 0;
+    }
+    return ret;
 }
 
 void xmpp_daemon::cleanup()

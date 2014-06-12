@@ -66,7 +66,9 @@ bool Config::load(bool configRequired)
     {
         boost::property_tree::ptree pt;
         boost::property_tree::ini_parser::read_ini(_configFile, pt);
-        _socket_file = pt.get<std::string>("Socket", "/tmp/swifter.socket");
+        _socket_file = pt.get<std::string>("Socket", defaultSocketFile());
+        if(_socket_file.empty())
+            _socket_file = defaultSocketFile();
         _xmpp_jid = pt.get<std::string>("JID", std::string());
         std::string recipients = pt.get<std::string>("AllowedRecipients", std::string());
         if(!recipients.empty())

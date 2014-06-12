@@ -204,6 +204,7 @@ server::server(boost::asio::io_service& io_service, const std::string& file, ser
     , acceptor_(io_service, stream_protocol::endpoint(file))
     , _callback(callback)
 {
+    ::chmod(file.c_str(), 0777);
     session_ptr new_session(new session(io_service_, _callback));
     acceptor_.async_accept(new_session->socket(),
                            boost::bind(&server::handle_accept, this, new_session,
