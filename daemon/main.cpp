@@ -64,8 +64,6 @@ private:
         if(recipients.empty() && !_config.xmppDefaultRecipient().empty())
             recipients.insert(_config.xmppDefaultRecipient());
 
-        std::cout << "num recp =" << recipients.size() << std::endl;
-
         if(recipients.empty())
         {
             _lastError = "No recipient specified.";

@@ -112,8 +112,8 @@ void read_response(socket_base::response & response, const std::string & buf)
 class server::session : public boost::enable_shared_from_this<session>
 {
 public:
-    session(boost::asio::io_service& io_service, server_callback & callback)
-        : socket_(io_service), _callback(callback)
+    session(boost::asio::io_service& io_service, server_callback & callback, bool debug)
+        : socket_(io_service), _callback(callback), _debug(debug)
     {
     }
 
@@ -150,13 +150,15 @@ public:
                 else
                     current_header = NULL;
 
-                std::cout << "got message id=" << msg.messageId << " to=" << msg.to << " cc=" << msg.cc << " xml=" << msg.xml << " sub=" << msg.subject << " body=" << msg.body << std::endl;
+                if(_debug)
+                    std::cout << "got message id=" << msg.messageId << " to=" << msg.to << " cc=" << msg.cc << " xml=" << msg.xml << " sub=" << msg.subject << " body=" << msg.body << std::endl;
 
                 response resp;
                 resp.messageId = msg.messageId;
                 bool success = _callback.onMessage(msg, resp);
 
-                std::cout << "send response id=" << resp.messageId << " success=" << resp.success << std::endl;
+                if(_debug)
+                    std::cout << "send response id=" << resp.messageId << " success=" << resp.success << std::endl;
 
                 boost::asio::streambuf buf;
                 write_response(resp, buf);
@@ -173,13 +175,14 @@ public:
 
     void handle_write(const boost::system::error_code& error, size_t bytes_transferred)
     {
-        std::cout << " handle_write " << error << " bytes=" << bytes_transferred << std::endl;
-            // re-start read
-            socket_.async_read_some(boost::asio::buffer(data_),
-                                    boost::bind(&session::handle_read,
-                                                shared_from_this(),
-                                                boost::asio::placeholders::error,
-                                                boost::asio::placeholders::bytes_transferred));
+        if(_debug)
+            std::cout << " handle_write " << error << " bytes=" << bytes_transferred << std::endl;
+        // re-start read
+        socket_.async_read_some(boost::asio::buffer(data_),
+                                boost::bind(&session::handle_read,
+                                            shared_from_this(),
+                                            boost::asio::placeholders::error,
+                                            boost::asio::placeholders::bytes_transferred));
     }
 
 private:
@@ -190,6 +193,7 @@ private:
     std::string pending_data_;
     boost::array<char, 1024> data_;
     server_callback & _callback;
+    bool _debug;
 };
 
 socket_base::socket_base(boost::asio::io_service& io_service, const std::string& file, bool debug)
@@ -206,7 +210,7 @@ server::server(boost::asio::io_service& io_service, const std::string& file, ser
     , _callback(callback)
 {
     ::chmod(file.c_str(), 0777);
-    session_ptr new_session(new session(io_service_, _callback));
+    session_ptr new_session(new session(io_service_, _callback, _debug));
     acceptor_.async_accept(new_session->socket(),
                            boost::bind(&server::handle_accept, this, new_session,
                                        boost::asio::placeholders::error));
@@ -217,7 +221,7 @@ void server::handle_accept(session_ptr new_session, const boost::system::error_c
     if (!error)
     {
         new_session->start();
-        new_session.reset(new session(io_service_, _callback));
+        new_session.reset(new session(io_service_, _callback, _debug));
         acceptor_.async_accept(new_session->socket(),
                                boost::bind(&server::handle_accept, this, new_session,
                                            boost::asio::placeholders::error));

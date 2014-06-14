@@ -1,3 +1,9 @@
+arsoft-xmpp-daemon (0.8.4) trusty; urgency=medium
+
+  * fewer debug messages on server side
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Sat, 14 Jun 2014 17:43:47 +0200
+
 arsoft-xmpp-daemon (0.8.3) trusty; urgency=medium
 
   * next attempt
