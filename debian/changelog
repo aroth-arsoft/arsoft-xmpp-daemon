@@ -1,3 +1,21 @@
+arsoft-xmpp-daemon (0.8.3) trusty; urgency=medium
+
+  * next attempt
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Sat, 14 Jun 2014 15:35:39 +0200
+
+arsoft-xmpp-daemon (0.8.2) trusty; urgency=medium
+
+  * more missing depends
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Sat, 14 Jun 2014 15:22:31 +0200
+
+arsoft-xmpp-daemon (0.8.1) trusty; urgency=medium
+
+  * fixed build depends 
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Sat, 14 Jun 2014 15:11:32 +0200
+
 arsoft-xmpp-daemon (0.8.0) trusty; urgency=medium
 
   * initial release
