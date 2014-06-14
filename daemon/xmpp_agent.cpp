@@ -98,20 +98,22 @@ bool xmpp_agent::sendMessage(const std::string & to, const std::string & subject
 void xmpp_agent::incomingMessage(Swift::Message::ref message)
 {
     std::string command = message->getBody();
-    Message::ref respobj(new Message);
-    respobj->setType(message->getType());
-    respobj->setSubject(message->getSubject());
-    respobj->setTo(message->getFrom());
-    respobj->setFrom(JID());
-
-    if(command == "version")
+    if(!command.empty())
     {
-        respobj->setBody(ARSOFT_XMPP_DAEMON_VERSION_STR);
+        Message::ref respobj(new Message);
+        respobj->setType(message->getType());
+        respobj->setSubject(message->getSubject());
+        respobj->setTo(message->getFrom());
+        respobj->setFrom(JID());
+
+        if(command == "version")
+        {
+            respobj->setBody(ARSOFT_XMPP_DAEMON_VERSION_STR);
+        }
+        else
+            respobj->setBody("unknown command \"" + command + "\"");
+
+        // send response to this request/command
+        _client->sendMessage(respobj);
     }
-    else
-        respobj->setBody("unknown command");
-
-    // send response to this request/command
-    _client->sendMessage(respobj);
-
 }
