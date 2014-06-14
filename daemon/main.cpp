@@ -316,7 +316,7 @@ int xmpp_daemon::run()
 
     try
     {
-        _socket_server = new server(*io_service, _socketFile, target_sender);
+        _socket_server = new server(*io_service, _socketFile, target_sender, _debug);
     }
     catch(std::exception & e)
     {
@@ -356,7 +356,7 @@ int xmpp_daemon::forward_message(const std::string & to, const std::string & cc,
     _networkFactories = new BoostNetworkFactories (_eventLoop);
     boost::shared_ptr<boost::asio::io_service> io_service = _networkFactories->getIOServiceThread()->getIOService();
 
-    client * cl = new client(*io_service, _socketFile);
+    client * cl = new client(*io_service, _socketFile, _debug);
     client::message msg;
     msg.messageId = time(NULL);
     msg.to = to;
@@ -364,7 +364,11 @@ int xmpp_daemon::forward_message(const std::string & to, const std::string & cc,
     msg.subject = subject;
     msg.body = body;
     msg.xml = xml;
-    cl->send(msg, boost::bind(&xmpp_daemon::completeHandler, this, _1));
+    if(!cl->send(msg, boost::bind(&xmpp_daemon::completeHandler, this, _1)))
+    {
+        _eventLoop->stop();
+        return 1;
+    }
 
     _eventLoop->run();
     return 0;
@@ -429,9 +433,11 @@ int main(int argc, char** argv)
         if (vm.count("subject"))
             subject = vm["subject"].as<std::string>();
 
+        bool startDaemon = (daemon || upstart || foreground);
+
         xmpp_daemon app(configFile, socketFile, debug);
 
-        if(body.empty())
+        if(startDaemon)
         {
             if(!app.prepare(upstart, daemon, foreground))
                 ret = 1;
@@ -443,7 +449,7 @@ int main(int argc, char** argv)
         }
         else
         {
-            app.forward_message(to, cc, subject, body, xml_message);
+            ret = app.forward_message(to, cc, subject, body, xml_message);
         }
     }
     return ret;

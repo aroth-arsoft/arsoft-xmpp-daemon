@@ -192,15 +192,16 @@ private:
     server_callback & _callback;
 };
 
-socket_base::socket_base(boost::asio::io_service& io_service, const std::string& file)
+socket_base::socket_base(boost::asio::io_service& io_service, const std::string& file, bool debug)
     : io_service_(io_service)
     , _socket_file(file)
+    , _debug(debug)
 {
 
 }
 
-server::server(boost::asio::io_service& io_service, const std::string& file, server_callback & callback)
-    : socket_base(io_service, file)
+server::server(boost::asio::io_service& io_service, const std::string& file, server_callback & callback, bool debug)
+    : socket_base(io_service, file, debug)
     , acceptor_(io_service, stream_protocol::endpoint(file))
     , _callback(callback)
 {
@@ -224,8 +225,8 @@ void server::handle_accept(session_ptr new_session, const boost::system::error_c
 }
 
 
-client::client(boost::asio::io_service& io_service, const std::string& file)
-    : socket_base(io_service, file)
+client::client(boost::asio::io_service& io_service, const std::string& file, bool debug)
+    : socket_base(io_service, file, debug)
     , _socket(io_service)
     , deadline_(io_service)
     , _connected(false)
@@ -255,7 +256,8 @@ bool client::send_next_message()
 
         _send_messages.push(msg);
 
-        std::cout << "send next message id=" << msg.messageId << std::endl;
+        if(_debug)
+            std::cout << "send next message id=" << msg.messageId << std::endl;
 
         // The connection was successful. Send the request.
         boost::asio::async_write(_socket, buf,
@@ -266,7 +268,8 @@ bool client::send_next_message()
     }
     else
     {
-        std::cout << "no more messages\n";
+        if(_debug)
+            std::cout << "no more messages\n";
     }
     return ret;
 }
@@ -277,7 +280,8 @@ void client::handle_connect(const boost::system::error_code& err)
     if (!err)
     {
         _connected = true;
-        std::cout << "client connected\n";
+        if(_debug)
+            std::cout << "client connected\n";
 
         _socket.async_read_some(boost::asio::buffer(data_),
                                 boost::bind(&client::handle_read,
@@ -289,7 +293,8 @@ void client::handle_connect(const boost::system::error_code& err)
     }
     else
     {
-        std::cout << "handle_connect Error: " << err.message() << "\n";
+        if(_debug)
+            std::cout << "handle_connect Error: " << err.message() << "\n";
 
         _socket.close();
 
@@ -303,7 +308,8 @@ void client::handle_connect(const boost::system::error_code& err)
 
 void client::handle_read(const boost::system::error_code& err, size_t bytes_transferred)
 {
-    std::cout << "handle_read " << err << "\n";
+    if(_debug)
+        std::cout << "handle_read " << err << "\n";
 
     pending_data_.append(data_.data(), bytes_transferred);
     const unix_socket_package_header * current_header = (const unix_socket_package_header *)pending_data_.data();
@@ -325,13 +331,15 @@ void client::handle_read(const boost::system::error_code& err, size_t bytes_tran
 
         if(first_sent_msg.messageId == resp.messageId)
         {
-            std::cout << "response id=" << resp.messageId << " success=" << resp.success << " msg=" << resp.error_message << "\n";
+            if(_debug)
+                std::cout << "response id=" << resp.messageId << " success=" << resp.success << " msg=" << resp.error_message << "\n";
         }
     }
 
     if(_messages.empty() && _send_messages.empty())
     {
-        std::cout << "All messages sent" << std::endl;
+        if(_debug)
+            std::cout << "All messages sent" << std::endl;
         // The deadline has passed. The socket is closed so that any outstanding
         // asynchronous operations are cancelled.
         _completeHandler(this);
@@ -342,15 +350,18 @@ void client::handle_write(const boost::system::error_code& err)
 {
     if (!err)
     {
-        std::cout << "handle_write\n";
+        if(_debug)
+            std::cout << "handle_write\n";
         if(!send_next_message())
         {
-            std::cout << "handle_write no more messages\n";
+            if(_debug)
+                std::cout << "handle_write no more messages\n";
         }
     }
     else
     {
-        std::cout << "handle_write Error: " << err.message() << "\n";
+        if(_debug)
+            std::cout << "handle_write Error: " << err.message() << "\n";
     }
 }
 

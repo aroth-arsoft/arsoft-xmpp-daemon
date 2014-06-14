@@ -29,12 +29,13 @@ public:
         std::string error_message;
     };
 
-public:
-    socket_base(boost::asio::io_service& io_service, const std::string& file);
+protected:
+    socket_base(boost::asio::io_service& io_service, const std::string& file, bool debug=false);
 
 protected:
     boost::asio::io_service& io_service_;
     std::string _socket_file;
+    bool _debug;
 };
 
 class server : public socket_base
@@ -46,7 +47,7 @@ public:
         virtual bool onMessage(const message & msg, response & resp) = 0;
     };
 
-    server(boost::asio::io_service& io_service, const std::string& file, server_callback & callback);
+    server(boost::asio::io_service& io_service, const std::string& file, server_callback & callback, bool debug=false);
 
 private:
     class session;
@@ -62,7 +63,7 @@ private:
 class client : public socket_base
 {
 public:
-    client(boost::asio::io_service& io_service, const std::string& file);
+    client(boost::asio::io_service& io_service, const std::string& file, bool debug=false);
 
     bool send(const message & msg, const boost::function<void(client* client)> & completeHandler, unsigned timeout=5000);
 

@@ -20,6 +20,8 @@ public:
 protected:
     class Callbacks;
 
+    void incomingMessage(Swift::Message::ref message);
+
     static std::string encodeMessage(const std::string & msg);
 
 private:

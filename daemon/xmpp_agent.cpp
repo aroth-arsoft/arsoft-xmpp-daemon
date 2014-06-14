@@ -1,6 +1,7 @@
 #include <Swiften/Swiften.h>
 #include "xmpp_agent.h"
 #include "xhtml_payload.h"
+#include "arsoft-xmpp-daemon-version.h"
 
 using namespace Swift;
 
@@ -18,10 +19,9 @@ public:
 
     void handleConnected()
     {
-        std::cout << "Connected" << std::endl;
+        std::cout << "Connected as " << _owner->_client->getJID() << " encryption=" << _owner->_client->isStreamEncrypted() << std::endl;
         // Request the roster
-        GetRosterRequest::ref rosterRequest =
-            GetRosterRequest::create(_owner->_client->getIQRouter());
+        GetRosterRequest::ref rosterRequest = GetRosterRequest::create(_owner->_client->getIQRouter());
         rosterRequest->onResponse.connect( boost::bind(&xmpp_agent::Callbacks::handleRosterReceived, this, _2));
         rosterRequest->send();
     }
@@ -31,16 +31,14 @@ public:
         if (error) {
             std::cerr << "Error receiving roster. Continuing anyway.";
         }
+        std::cout << "set presence for " << _owner->_client->getJID() << " to " << _statusMessage << std::endl;
         // Send initial available presence
         _owner->_client->sendPresence(Presence::create(_statusMessage));
     }
 
     void handleMessageReceived(Message::ref message)
     {
-        // Echo back the incoming message
-        message->setTo(message->getFrom());
-        message->setFrom(JID());
-        _owner->_client->sendMessage(message);
+        _owner->incomingMessage(message);
     }
 
     void handlePresenceReceived(Presence::ref presence) {
@@ -95,4 +93,25 @@ bool xmpp_agent::sendMessage(const std::string & to, const std::string & subject
 
     _client->sendMessage(msgobj);
     return true;
+}
+
+void xmpp_agent::incomingMessage(Swift::Message::ref message)
+{
+    std::string command = message->getBody();
+    Message::ref respobj(new Message);
+    respobj->setType(message->getType());
+    respobj->setSubject(message->getSubject());
+    respobj->setTo(message->getFrom());
+    respobj->setFrom(JID());
+
+    if(command == "version")
+    {
+        respobj->setBody(ARSOFT_XMPP_DAEMON_VERSION_STR);
+    }
+    else
+        respobj->setBody("unknown command");
+
+    // send response to this request/command
+    _client->sendMessage(respobj);
+
 }
