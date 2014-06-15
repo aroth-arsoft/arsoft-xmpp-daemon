@@ -4,6 +4,8 @@
 #include <boost/property_tree/ini_parser.hpp>
 #include <boost/algorithm/string.hpp>
 
+#include <iostream>
+
 namespace {
     std::string expand_user(const std::string & path)
     {
