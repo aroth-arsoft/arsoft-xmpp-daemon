@@ -47,6 +47,13 @@ Config::Config()
 }
 
 Config::Config(const std::string & configFile)
+    : _configFile()
+    , _socket_file(defaultSocketFile())
+    , _xmpp_jid()
+    , _xmpp_default_recipient()
+    , _allowed_xmpp_recipients()
+    , _xmpp_password()
+    , _xmpp_status_message()
 {
     bool configRequired = !configFile.empty();
     if(configFile.empty())

@@ -297,8 +297,7 @@ void client::handle_connect(const boost::system::error_code& err)
     }
     else
     {
-        if(_debug)
-            std::cout << "handle_connect Error: " << err.message() << "\n";
+        std::cerr << "Connect to " << _socket_file << " error: " << err.message() << std::endl;
 
         _socket.close();
 
