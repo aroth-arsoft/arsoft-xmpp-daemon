@@ -1,3 +1,9 @@
+arsoft-xmpp-daemon (0.8.6) trusty; urgency=medium
+
+  * fixed issue when default config file is not readable
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Mon, 16 Jun 2014 16:19:20 +0200
+
 arsoft-xmpp-daemon (0.8.5) trusty; urgency=medium
 
   * improve handling of unknown commands

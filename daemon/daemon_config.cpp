@@ -35,7 +35,7 @@ const std::string & Config::defaultSocketFile()
 
 Config::Config()
     : _configFile()
-    , _socket_file()
+    , _socket_file(defaultSocketFile())
     , _xmpp_jid()
     , _xmpp_default_recipient()
     , _allowed_xmpp_recipients()
