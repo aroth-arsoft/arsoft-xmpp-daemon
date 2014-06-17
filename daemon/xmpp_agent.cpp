@@ -13,6 +13,7 @@ public:
         , _statusMessage(statusMessage)
         {
             _owner->_client->onConnected.connect(boost::bind(&xmpp_agent::Callbacks::handleConnected, this));
+            _owner->_client->onDisconnected.connect(boost::bind(&xmpp_agent::Callbacks::handleDisconnected, this, _1));
             _owner->_client->onMessageReceived.connect(boost::bind(&xmpp_agent::Callbacks::handleMessageReceived, this, _1));
             _owner->_client->onPresenceReceived.connect(boost::bind(&xmpp_agent::Callbacks::handlePresenceReceived, this, _1));
         }
@@ -24,6 +25,53 @@ public:
         GetRosterRequest::ref rosterRequest = GetRosterRequest::create(_owner->_client->getIQRouter());
         rosterRequest->onResponse.connect( boost::bind(&xmpp_agent::Callbacks::handleRosterReceived, this, _2));
         rosterRequest->send();
+    }
+    void handleDisconnected(const boost::optional<Swift::ClientError> &error)
+    {
+        std::string message;
+        bool reconnect = false;
+        if (error) {
+            switch(error->getType()) {
+                case Swift::ClientError::UnknownError: message = ("Unknown Error"); reconnect = true; break;
+                case Swift::ClientError::DomainNameResolveError: message = ("Unable to find server"); break;
+                case Swift::ClientError::ConnectionError: message = ("Error connecting to server"); break;
+                case Swift::ClientError::ConnectionReadError: message = ("Error while receiving server data"); reconnect = true; break;
+                case Swift::ClientError::ConnectionWriteError: message = ("Error while sending data to the server"); reconnect = true; break;
+                case Swift::ClientError::XMLError: message = ("Error parsing server data"); reconnect = true; break;
+                case Swift::ClientError::AuthenticationFailedError: message = ("Login/password invalid"); break;
+                case Swift::ClientError::CompressionFailedError: message = ("Error while compressing stream"); break;
+                case Swift::ClientError::ServerVerificationFailedError: message = ("Server verification failed"); break;
+                case Swift::ClientError::NoSupportedAuthMechanismsError: message = ("Authentication mechanisms not supported"); break;
+                case Swift::ClientError::UnexpectedElementError: message = ("Unexpected response"); break;
+                case Swift::ClientError::ResourceBindError: message = ("Error binding resource"); break;
+                case Swift::ClientError::SessionStartError: message = ("Error starting session"); break;
+                case Swift::ClientError::StreamError: message = ("Stream error"); break;
+                case Swift::ClientError::TLSError: message = ("Encryption error"); break;
+                case Swift::ClientError::ClientCertificateLoadError: message = ("Error loading certificate (Invalid password?)"); break;
+                case Swift::ClientError::ClientCertificateError: message = ("Certificate not authorized"); break;
+
+                case Swift::ClientError::UnknownCertificateError: message = ("Unknown certificate"); break;
+                case Swift::ClientError::CertificateExpiredError: message = ("Certificate has expired"); break;
+                case Swift::ClientError::CertificateNotYetValidError: message = ("Certificate is not yet valid"); break;
+                case Swift::ClientError::CertificateSelfSignedError: message = ("Certificate is self-signed"); break;
+                case Swift::ClientError::CertificateRejectedError: message = ("Certificate has been rejected"); break;
+                case Swift::ClientError::CertificateUntrustedError: message = ("Certificate is not trusted"); break;
+                case Swift::ClientError::InvalidCertificatePurposeError: message = ("Certificate cannot be used for encrypting your connection"); break;
+                case Swift::ClientError::CertificatePathLengthExceededError: message = ("Certificate path length constraint exceeded"); break;
+                case Swift::ClientError::InvalidCertificateSignatureError: message = ("Invalid certificate signature"); break;
+                case Swift::ClientError::InvalidCAError: message = ("Invalid Certificate Authority"); break;
+                case Swift::ClientError::InvalidServerIdentityError: message = ("Certificate does not match the host identity"); break;
+            }
+        }
+        if(reconnect)
+        {
+            std::cerr << "Disconnected and reconnect; " << message << std::endl;
+            _owner->_client->connect();
+        }
+        else
+        {
+            std::cerr << "Disconnected and unable to reconnect; " << message << std::endl;
+        }
     }
 
     void handleRosterReceived(ErrorPayload::ref error)
