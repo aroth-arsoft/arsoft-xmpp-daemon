@@ -3,6 +3,8 @@
 #include "xhtml_payload.h"
 #include "arsoft-xmpp-daemon-version.h"
 
+#undef AGENT_DEBUG_COMMANDS
+
 using namespace Swift;
 
 class xmpp_agent::Callbacks
@@ -61,12 +63,25 @@ public:
                 case Swift::ClientError::InvalidCertificateSignatureError: message = ("Invalid certificate signature"); break;
                 case Swift::ClientError::InvalidCAError: message = ("Invalid Certificate Authority"); break;
                 case Swift::ClientError::InvalidServerIdentityError: message = ("Certificate does not match the host identity"); break;
+                default:
+                    {
+                        std::stringstream ss;
+                        ss << ("Unknown error type") << error->getType();
+                        message = ss.str();
+                    }
+                    break;
             }
+        }
+        else
+        {
+            message = ("Triggered manually");
+            if(_owner->_reconnectAfterDisconnect)
+                reconnect = true;
         }
         if(reconnect)
         {
             std::cerr << "Disconnected and reconnect; " << message << std::endl;
-            _owner->_client->connect();
+            _owner->reconnect();
         }
         else
         {
@@ -97,6 +112,7 @@ public:
             response->setType(Presence::Subscribed);
             _owner->_client->sendPresence(response);
         }
+        _owner->sendPendingMessages();
     }
 
 private:
@@ -105,16 +121,21 @@ private:
 };
 
 xmpp_agent::xmpp_agent(const JID& jid, const SafeString& password, const std::string & statusMessage, NetworkFactories* networkFactories, Storages* storages)
+    : _networkFactories(networkFactories)
+    , _reconnect_timer()
+    , _reconnectAfterDisconnect(true)
 {
     _client = new Client(jid, password, networkFactories, storages);
     _client->addPayloadParserFactory(new GenericPayloadParserFactory<Swift::XHTMLIMParser>("html", "http://jabber.org/protocol/xhtml-im"));
     _client->addPayloadSerializer(new Swift::XHTMLIMSerializer());
     _client->setAlwaysTrustCertificates();
+    _client->setSoftwareVersion(ARSOFT_XMPP_DAEMON_NAME, ARSOFT_XMPP_DAEMON_VERSION_STR);
     _callbacks = new Callbacks(this, statusMessage);
 }
 
 xmpp_agent::~xmpp_agent()
 {
+    _reconnect_timer.reset();
     if(_client->isActive())
         _client->disconnect();
     delete _client;
@@ -126,8 +147,22 @@ bool xmpp_agent::connect()
     return _client->isActive();
 }
 
+bool xmpp_agent::reconnect()
+{
+    _reconnect_timer = _networkFactories->getTimerFactory()->createTimer(800);
+    _reconnect_timer->onTick.connect(boost::bind(&xmpp_agent::handleReconnectTimer, this));
+    _reconnect_timer->start();
+    return true;
+}
+
+void xmpp_agent::handleReconnectTimer()
+{
+    connect();
+}
+
 bool xmpp_agent::sendMessage(const std::string & to, const std::string & subject, const std::string & message, bool xml)
 {
+    bool ret;
     Message::ref msgobj(new Message);
     // Echo back the incoming message
     msgobj->setTo(to);
@@ -139,8 +174,18 @@ bool xmpp_agent::sendMessage(const std::string & to, const std::string & subject
         msgobj->setBody(message);
     msgobj->setType(Message::Chat);
 
-    _client->sendMessage(msgobj);
-    return true;
+    if(_client->isAvailable())
+    {
+        _client->sendMessage(msgobj);
+        ret = true;
+    }
+    else
+    {
+        _pendingMessages.push(msgobj);
+        std::cerr << "XMPP client not connected; attempt to reconnect" << std::endl;
+        ret = reconnect();
+    }
+    return ret;
 }
 
 void xmpp_agent::incomingMessage(Swift::Message::ref message)
@@ -148,6 +193,10 @@ void xmpp_agent::incomingMessage(Swift::Message::ref message)
     std::string command = message->getBody();
     if(!command.empty())
     {
+#ifdef AGENT_DEBUG_COMMANDS
+        bool disconnectAfterResponse = false;
+#endif // AGENT_DEBUG_COMMANDS
+
         Message::ref respobj(new Message);
         respobj->setType(message->getType());
         respobj->setSubject(message->getSubject());
@@ -158,10 +207,45 @@ void xmpp_agent::incomingMessage(Swift::Message::ref message)
         {
             respobj->setBody(ARSOFT_XMPP_DAEMON_VERSION_STR);
         }
+#ifdef AGENT_DEBUG_COMMANDS
+        else if(command == "disconnect")
+        {
+            _reconnectAfterDisconnect = false;
+            disconnectAfterResponse = true;
+        }
+        else if(command == "reconnect")
+        {
+            _reconnectAfterDisconnect = true;
+            disconnectAfterResponse = true;
+        }
+#endif // AGENT_DEBUG_COMMANDS
         else
             respobj->setBody("unknown command \"" + command + "\"");
 
         // send response to this request/command
         _client->sendMessage(respobj);
+
+#ifdef AGENT_DEBUG_COMMANDS
+        if(disconnectAfterResponse)
+        {
+            _client->disconnect();
+        }
+#endif // AGENT_DEBUG_COMMANDS
+    }
+}
+
+void xmpp_agent::sendPendingMessages()
+{
+    while(!_pendingMessages.empty())
+    {
+        Message::ref msgobj = _pendingMessages.front();
+        if(_client->isAvailable())
+        {
+            std::cerr << "sendPendingMessage" << std::endl;
+            _client->sendMessage(msgobj);
+            _pendingMessages.pop();
+        }
+        else
+            break;
     }
 }

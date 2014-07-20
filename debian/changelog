@@ -1,3 +1,9 @@
+arsoft-xmpp-daemon (0.8.9) trusty; urgency=medium
+
+  * automatically reconnect on message send
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Sun, 20 Jul 2014 12:31:36 +0200
+
 arsoft-xmpp-daemon (0.8.8) trusty; urgency=medium
 
   * reconnect after connection was lost

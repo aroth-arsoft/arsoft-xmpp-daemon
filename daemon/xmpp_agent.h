@@ -5,6 +5,7 @@ namespace Swift {
     class SafeString;
     class NetworkFactories;
     class Storages;
+    class Timer;
 }
 
 class xmpp_agent
@@ -21,11 +22,19 @@ protected:
     class Callbacks;
 
     void incomingMessage(Swift::Message::ref message);
+    void handleReconnectTimer();
 
-    static std::string encodeMessage(const std::string & msg);
+    bool reconnect();
+
+    void sendPendingMessages();
 
 private:
+    Swift::NetworkFactories* _networkFactories;
     Swift::Client *     _client;
     Callbacks *         _callbacks;
+    boost::shared_ptr<Swift::Timer> _reconnect_timer;
+    typedef std::queue<Swift::Message::ref> MessageQueue;
+    MessageQueue _pendingMessages;
+    bool                _reconnectAfterDisconnect;
 };
 
