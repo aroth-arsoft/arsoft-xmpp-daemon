@@ -1,3 +1,10 @@
+arsoft-xmpp-daemon (0.8.10) trusty; urgency=medium
+
+  * version info now includes the hostname
+  * fixed daemon restart issues
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Sun, 20 Jul 2014 17:16:05 +0200
+
 arsoft-xmpp-daemon (0.8.9) trusty; urgency=medium
 
   * automatically reconnect on message send

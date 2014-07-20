@@ -12,3 +12,12 @@ override_dh_clean:
 
 override_dh_strip:
 	dh_strip --dbg-package=arsoft-xmpp-daemon-dbg
+
+override_dh_install:
+	dh_install
+	install -d -m 0755 $$(pwd)/debian/tmp/etc/init.d
+	install -d -m 0755 $$(pwd)/debian/tmp/etc/init
+
+override_dh_installinit:
+	dh_installinit --name=arsoft-xmpp-daemon-setup --no-start
+	dh_installinit --name=arsoft-xmpp-daemon

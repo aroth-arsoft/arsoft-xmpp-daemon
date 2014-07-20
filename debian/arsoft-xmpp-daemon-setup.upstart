@@ -5,7 +5,7 @@ description     "AR Soft XMPP Daemon setup"
 author          "Andreas Roth <aroth@arsoft-online.com>"
 
 start on (local-filesystems and net-device-up IFACE!=lo and started udev-finish)
-stop on runlevel [016]
+
 task
 script
     [ ! -d /run/arsoft-xmpp-daemon ] && mkdir /run/arsoft-xmpp-daemon
