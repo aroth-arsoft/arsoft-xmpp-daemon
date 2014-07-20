@@ -188,6 +188,33 @@ bool xmpp_agent::sendMessage(const std::string & to, const std::string & subject
     return ret;
 }
 
+namespace {
+    static std::string get_fqdn()
+    {
+        std::string ret;
+        struct addrinfo hints, *info, *p;
+        int gai_result;
+
+        memset(&hints, 0, sizeof hints);
+        hints.ai_family = AF_UNSPEC; /*either IPV4 or IPV6*/
+        hints.ai_socktype = SOCK_STREAM;
+        hints.ai_flags = AI_CANONNAME;
+
+        char hostname[256];
+        gethostname(hostname, sizeof(hostname));
+
+        gai_result = getaddrinfo(hostname, "http", &hints, &info);
+        if(gai_result == 0)
+        {
+            for(p = info; p != NULL && ret.empty(); p = p->ai_next) {
+                ret = p->ai_canonname;
+            }
+            freeaddrinfo(info);
+        }
+        return ret;
+    }
+} // namespace
+
 void xmpp_agent::incomingMessage(Swift::Message::ref message)
 {
     std::string command = message->getBody();
@@ -205,7 +232,9 @@ void xmpp_agent::incomingMessage(Swift::Message::ref message)
 
         if(command == "version")
         {
-            respobj->setBody(ARSOFT_XMPP_DAEMON_VERSION_STR);
+            std::stringstream ss;
+            ss << ARSOFT_XMPP_DAEMON_VERSION_STR << " on " << get_fqdn();
+            respobj->setBody(ss.str());
         }
 #ifdef AGENT_DEBUG_COMMANDS
         else if(command == "disconnect")
