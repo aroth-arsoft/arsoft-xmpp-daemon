@@ -1,0 +1,12 @@
+[Unit]
+Description=AR Soft XMPP Daemon
+After=network.target
+
+[Service]
+User=nobody
+Group=nogroup
+Type=forking
+EnvironmentFile=/etc/default/arsoft-xmpp-daemon
+Environment=rundir=/run/arsoft-xmpp-daemon
+ExecStartPre=[ ! -d ${rundir} ] && mkdir ${rundir}; chown nobody.nogroup ${rundir}; chmod 0755 ${rundir}
+ExecStart=/usr/bin/arsoft-xmpp-daemon --config /etc/arsoft/xmpp-daemon.conf --upstart

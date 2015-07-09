@@ -4,7 +4,7 @@
 DEB_CMAKE_EXTRA_FLAGS += -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
 %:
-	dh $@
+	dh --with systemd $@
 
 override_dh_clean:
 	dh_clean
