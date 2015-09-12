@@ -2,7 +2,7 @@ Source: arsoft-xmpp-daemon
 Section: admin
 Priority: extra
 Maintainer: Andreas Roth <aroth@arsoft-online.com>
-Build-Depends: debhelper (>= 9), dh-systemd, libswiften-dev (>= 2.0), cmake,
+Build-Depends: debhelper (>= 9), dh-systemd, libsystemd-dev, libswiften-dev (>= 2.0), cmake,
  libboost-program-options1.55-dev | libboost-program-options-dev,
  libxml2-dev, libidn11-dev, zlib1g-dev, libssl-dev
 Standards-Version: 3.9.5

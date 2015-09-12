@@ -19,6 +19,10 @@
 
 #include <Swiften/Swiften.h>
 
+#ifdef WITH_SYSTEMD
+#include <systemd/sd-daemon.h>
+#endif //  WITH_SYSTEMD
+
 #include "xmpp_agent.h"
 #include "server.h"
 #include "daemon_config.h"
@@ -121,7 +125,6 @@ private:
 class xmpp_daemon
 {
 public:
-
     xmpp_daemon(const std::string & configFile, const std::string & socketFile, bool debug)
         : _debug(debug)
         , _config(configFile)
@@ -132,25 +135,31 @@ public:
             _socketFile = _config.socketFile();
     }
 
-    bool prepare(bool upstart, bool daemon, bool foreground);
+    bool prepare(bool systemd, bool daemon, bool foreground);
     int run();
     void cleanup();
 
     int forward_message(const std::string & to, const std::string & cc, const std::string & subject, const std::string & body, bool xml=false);
 
 private:
+#if !defined(WITH_SYSTEMD)
     void removeSocketFile();
+#endif // !defined(WITH_SYSTEMD)
     void completeHandler(client * client);
 
 private:
     bool _debug;
     Config _config;
+#if defined(WITH_SYSTEMD)
+    int _socketHandle;
+#endif
     std::string _socketFile;
     server * _socket_server;
     SimpleEventLoop * _eventLoop;
     BoostNetworkFactories * _networkFactories;
 };
 
+#if !defined(WITH_SYSTEMD)
 void xmpp_daemon::removeSocketFile()
 {
     if (boost::filesystem::exists(_socketFile))
@@ -161,13 +170,16 @@ void xmpp_daemon::removeSocketFile()
     }
 
 }
+#endif // !defined(WITH_SYSTEMD)
 
-bool xmpp_daemon::prepare(bool upstart, bool daemon, bool foreground)
+bool xmpp_daemon::prepare(bool systemd, bool daemon, bool foreground)
 {
+#if !defined(WITH_SYSTEMD)
     removeSocketFile();
+#endif // !defined(WITH_SYSTEMD)
 
     bool configOk = true;
-    if(upstart || daemon || foreground)
+    if(systemd || daemon || foreground)
     {
         if(_config.xmppJid().empty())
         {
@@ -184,9 +196,27 @@ bool xmpp_daemon::prepare(bool upstart, bool daemon, bool foreground)
     if(!configOk)
         return false;
 
+#if defined(WITH_SYSTEMD)
+    int n = sd_listen_fds(0);
+    if (n > 1)
+    {
+        std::cerr << "Too many file descriptors received." << std::endl;
+        return false;
+    }
+    else if (n == 1)
+    {
+        _socketHandle = SD_LISTEN_FDS_START + 0;
+        _eventLoop = new SimpleEventLoop();
+        _networkFactories = new BoostNetworkFactories(_eventLoop);
+    }
+    else
+    {
+        std::cerr << "No file descriptors received." << std::endl;
+        return false;
+    }
+#else
     _eventLoop = new SimpleEventLoop();
     _networkFactories = new BoostNetworkFactories(_eventLoop);
-
     if(daemon)
     {
         boost::shared_ptr<boost::asio::io_service> io_service = _networkFactories->getIOServiceThread()->getIOService();
@@ -300,7 +330,7 @@ bool xmpp_daemon::prepare(bool upstart, bool daemon, bool foreground)
             io_service->notify_fork(boost::asio::io_service::fork_child);
         }
     }
-
+#endif
     return true;
 }
 
@@ -314,7 +344,11 @@ int xmpp_daemon::run()
 
     try
     {
+#if defined(WITH_SYSTEMD)
+        _socket_server = new server(*io_service, _socketHandle, target_sender, _debug);
+#else
         _socket_server = new server(*io_service, _socketFile, target_sender, _debug);
+#endif
     }
     catch(std::exception & e)
     {
@@ -339,8 +373,9 @@ void xmpp_daemon::cleanup()
     if(_eventLoop)
         delete _eventLoop;
 
+#if !defined(WITH_SYSTEMD)
     removeSocketFile();
-
+#endif // !defined(WITH_SYSTEMD)
 }
 
 void xmpp_daemon::completeHandler(client * client)
@@ -354,7 +389,7 @@ int xmpp_daemon::forward_message(const std::string & to, const std::string & cc,
     _networkFactories = new BoostNetworkFactories (_eventLoop);
     boost::shared_ptr<boost::asio::io_service> io_service = _networkFactories->getIOServiceThread()->getIOService();
 
-    client * cl = new client(*io_service, _socketFile, _debug);
+    client * cl = new client(*io_service, _config.socketFile(), _debug);
     client::message msg;
     msg.messageId = time(NULL);
     msg.to = to;
@@ -382,9 +417,9 @@ int main(int argc, char** argv)
     desc.add_options()
     ("help", "produce help message")
     ("debug", "enable debug mode")
-    ("daemon", "run in the background as daemon.")
+    ("daemon", "run in the background as traditional SysV daemon.")
     ("foreground", "run in the foreground.")
-    ("upstart", "run in the inside upstart.")
+    ("systemd", "run in the inside systemd.")
     ("socket", po::value<std::string>(), "socket file to communicate with the background daemon.")
     ("config", po::value<std::string>(), "specifies the configuration file to use.")
     ("user", po::value<std::string>(), "user to run the daemon.")
@@ -410,7 +445,7 @@ int main(int argc, char** argv)
         bool debug = vm.count("debug") != 0;
         bool daemon = vm.count("daemon") != 0;
         bool foreground = vm.count("foreground") != 0;
-        bool upstart = vm.count("upstart") != 0;
+        bool systemd = vm.count("systemd") != 0;
         bool xml_message = vm.count("xml") != 0;
         std::string configFile;
         std::string socketFile;
@@ -431,13 +466,13 @@ int main(int argc, char** argv)
         if (vm.count("subject"))
             subject = vm["subject"].as<std::string>();
 
-        bool startDaemon = (daemon || upstart || foreground);
+        bool startDaemon = (daemon || systemd || foreground);
 
         xmpp_daemon app(configFile, socketFile, debug);
 
         if(startDaemon)
         {
-            if(!app.prepare(upstart, daemon, foreground))
+            if(!app.prepare(systemd, daemon, foreground))
                 ret = 1;
             else
             {

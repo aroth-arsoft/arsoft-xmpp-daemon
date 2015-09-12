@@ -216,6 +216,17 @@ server::server(boost::asio::io_service& io_service, const std::string& file, ser
                                        boost::asio::placeholders::error));
 }
 
+server::server(boost::asio::io_service& io_service, int socketHandle, server_callback & callback, bool debug)
+    : socket_base(io_service, std::string(), debug)
+    , acceptor_(io_service, stream_protocol(), socketHandle)
+    , _callback(callback)
+{
+    session_ptr new_session(new session(io_service_, _callback, _debug));
+    acceptor_.async_accept(new_session->socket(),
+                           boost::bind(&server::handle_accept, this, new_session,
+                                       boost::asio::placeholders::error));
+}
+
 void server::handle_accept(session_ptr new_session, const boost::system::error_code& error)
 {
     if (!error)

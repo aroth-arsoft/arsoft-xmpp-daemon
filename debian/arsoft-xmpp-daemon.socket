@@ -1,0 +1,5 @@
+[Socket]
+ListenStream=/run/arsoft-xmpp-daemon/socket
+
+[Install]
+WantedBy=sockets.target

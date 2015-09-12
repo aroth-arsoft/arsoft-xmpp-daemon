@@ -47,6 +47,7 @@ public:
         virtual bool onMessage(const message & msg, response & resp) = 0;
     };
 
+    server(boost::asio::io_service& io_service, int socketHandle, server_callback & callback, bool debug=false);
     server(boost::asio::io_service& io_service, const std::string& file, server_callback & callback, bool debug=false);
 
 private:

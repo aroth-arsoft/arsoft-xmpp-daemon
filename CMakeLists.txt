@@ -4,12 +4,17 @@ project(arsoft-xmpp-daemon)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 
+option(BUILD_WITH_SYSTEMD "Use systemd" ON)
+
 find_package(Boost REQUIRED COMPONENTS system signals program_options filesystem)
 find_package(Swiften REQUIRED)
+if(BUILD_WITH_SYSTEMD)
+    find_package(SystemdDaemon)
+endif()
 
 set(ARSOFT_XMPP_DAEMON_MAJOR_VERSION 0)
 set(ARSOFT_XMPP_DAEMON_MINOR_VERSION 8)
-set(ARSOFT_XMPP_DAEMON_PATCH_VERSION 10)
+set(ARSOFT_XMPP_DAEMON_PATCH_VERSION 11)
 
 configure_file(version.h.cmake "${CMAKE_CURRENT_BINARY_DIR}/arsoft-xmpp-daemon-version.h")
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
