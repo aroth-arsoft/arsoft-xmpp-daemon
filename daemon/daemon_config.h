@@ -8,6 +8,12 @@ class Config
 public:
     typedef std::set<std::string>   string_set;
 
+    enum UseTLS {
+        NeverUseTLS,
+        UseTLSWhenAvailable,
+        RequireTLS
+    };
+
     static const std::string & defaultConfigFile();
     static const std::string & defaultSocketFile();
     Config();
@@ -20,6 +26,7 @@ public:
     const std::string & xmppDefaultRecipient() const { return _xmpp_default_recipient; }
     const string_set & allowedXmppRecipients() const { return _allowed_xmpp_recipients; }
     const std::string & xmppStatusMessage() const { return _xmpp_status_message; }
+    const UseTLS & useTls() const { return _use_tls; }
 
     friend std::ostream& operator<< (std::ostream& stream, const Config& config);
 
@@ -34,6 +41,7 @@ private:
     string_set _allowed_xmpp_recipients;
     std::string _xmpp_password;
     std::string _xmpp_status_message;
+    UseTLS _use_tls;
 };
 
 std::ostream& operator<< (std::ostream& stream, const Config& config);

@@ -14,7 +14,7 @@ endif()
 
 set(ARSOFT_XMPP_DAEMON_MAJOR_VERSION 0)
 set(ARSOFT_XMPP_DAEMON_MINOR_VERSION 8)
-set(ARSOFT_XMPP_DAEMON_PATCH_VERSION 11)
+set(ARSOFT_XMPP_DAEMON_PATCH_VERSION 12)
 
 configure_file(version.h.cmake "${CMAKE_CURRENT_BINARY_DIR}/arsoft-xmpp-daemon-version.h")
 include_directories(${CMAKE_CURRENT_BINARY_DIR})

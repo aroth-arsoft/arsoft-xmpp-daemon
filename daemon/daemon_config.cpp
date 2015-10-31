@@ -43,6 +43,7 @@ Config::Config()
     , _allowed_xmpp_recipients()
     , _xmpp_password()
     , _xmpp_status_message()
+    , _use_tls(UseTLSWhenAvailable)
 {
 }
 
@@ -54,6 +55,7 @@ Config::Config(const std::string & configFile)
     , _allowed_xmpp_recipients()
     , _xmpp_password()
     , _xmpp_status_message()
+    , _use_tls(UseTLSWhenAvailable)
 {
     bool configRequired = !configFile.empty();
     if(configFile.empty())
@@ -87,6 +89,21 @@ bool Config::load(bool configRequired)
         _xmpp_default_recipient = pt.get<std::string>("DefaultRecipient", std::string());
         _xmpp_password = pt.get<std::string>("Password", std::string());
         _xmpp_status_message = pt.get<std::string>("StatusMessage", std::string());
+        std::string tls_str = boost::to_lower_copy(pt.get<std::string>("UseTLS", std::string()));
+        if(tls_str == "never")
+            _use_tls = NeverUseTLS;
+        else if(tls_str == "auto")
+            _use_tls = UseTLSWhenAvailable;
+        else if(tls_str == "require")
+            _use_tls = RequireTLS;
+        else
+        {
+            if(boost::algorithm::ends_with(_xmpp_jid, "@gmail.com") || boost::algorithm::ends_with(_xmpp_jid, "@googlemail.com"))
+                _use_tls = RequireTLS;
+            else
+                _use_tls = UseTLSWhenAvailable;
+        }
+
         ret = true;
     }
     catch(const boost::property_tree::ptree_error &e)
@@ -105,5 +122,6 @@ std::ostream& operator<< (std::ostream& stream, const Config& config)
     stream << "xmppDefaultRecipient=" << config.xmppDefaultRecipient() << std::endl;
     stream << "allowedXmppRecipients=" << boost::join(config.allowedXmppRecipients(), ",") << std::endl;
     stream << "xmppStatusMessage=" << config.xmppStatusMessage() << std::endl;
+    stream << "useTls=" << config.useTls() << std::endl;
     return stream;
 }

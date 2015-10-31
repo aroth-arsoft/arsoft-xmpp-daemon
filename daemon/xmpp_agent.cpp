@@ -1,6 +1,20 @@
-#include <Swiften/Swiften.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+
+#include <boost/bind.hpp>
+
+#include <Swiften/Client/Client.h>
+#include <Swiften/Client/ClientOptions.h>
+#include <Swiften/Elements/Presence.h>
+#include <Swiften/Roster/GetRosterRequest.h>
+#include <Swiften/Parser/GenericPayloadParserFactory.h>
+#include <Swiften/Network/NetworkFactories.h>
+#include <Swiften/Network/TimerFactory.h>
+
 #include "xmpp_agent.h"
 #include "xhtml_payload.h"
+#include "daemon_config.h"
 #include "arsoft-xmpp-daemon-version.h"
 
 #undef AGENT_DEBUG_COMMANDS
@@ -120,17 +134,28 @@ private:
     std::string _statusMessage;
 };
 
-xmpp_agent::xmpp_agent(const JID& jid, const SafeString& password, const std::string & statusMessage, NetworkFactories* networkFactories, Storages* storages)
-    : _networkFactories(networkFactories)
+xmpp_agent::xmpp_agent(const Config & config, NetworkFactories* networkFactories, Storages* storages)
+    : _config(config)
+    , _networkFactories(networkFactories)
     , _reconnect_timer()
     , _reconnectAfterDisconnect(true)
+    , _clientOptions(NULL)
 {
-    _client = new Client(jid, password, networkFactories, storages);
+    _clientOptions = new ClientOptions;
+    switch(_config.useTls())
+    {
+    case Config::NeverUseTLS: _clientOptions->useTLS = ClientOptions::NeverUseTLS; break;
+    case Config::RequireTLS: _clientOptions->useTLS = ClientOptions::RequireTLS; break;
+    default:
+    case Config::UseTLSWhenAvailable: _clientOptions->useTLS = ClientOptions::UseTLSWhenAvailable; break;
+    }
+
+    _client = new Client(_config.xmppJid(), _config.xmppPassword(), networkFactories, storages);
     _client->addPayloadParserFactory(new GenericPayloadParserFactory<Swift::XHTMLIMParser>("html", "http://jabber.org/protocol/xhtml-im"));
     _client->addPayloadSerializer(new Swift::XHTMLIMSerializer());
     _client->setAlwaysTrustCertificates();
     _client->setSoftwareVersion(ARSOFT_XMPP_DAEMON_NAME, ARSOFT_XMPP_DAEMON_VERSION_STR);
-    _callbacks = new Callbacks(this, statusMessage);
+    _callbacks = new Callbacks(this, _config.xmppStatusMessage());
 }
 
 xmpp_agent::~xmpp_agent()
@@ -139,11 +164,12 @@ xmpp_agent::~xmpp_agent()
     if(_client->isActive())
         _client->disconnect();
     delete _client;
+    delete _clientOptions;
 }
 
 bool xmpp_agent::connect()
 {
-    _client->connect();
+    _client->connect(*_clientOptions);
     return _client->isActive();
 }
 

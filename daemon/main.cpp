@@ -17,7 +17,9 @@
 #include <unistd.h>
 #include <signal.h>
 
-#include <Swiften/Swiften.h>
+#include <Swiften/EventLoop/SimpleEventLoop.h>
+#include <Swiften/Client/Client.h>
+#include <Swiften/Network/BoostNetworkFactories.h>
 
 #ifdef WITH_SYSTEMD
 #include <systemd/sd-daemon.h>
@@ -128,6 +130,9 @@ public:
     xmpp_daemon(const std::string & configFile, const std::string & socketFile, bool debug)
         : _debug(debug)
         , _config(configFile)
+#if defined(WITH_SYSTEMD)
+        , _socketHandle(-1)
+#endif
         , _socketFile(socketFile)
         , _socket_server(NULL)
     {
@@ -142,9 +147,7 @@ public:
     int forward_message(const std::string & to, const std::string & cc, const std::string & subject, const std::string & body, bool xml=false);
 
 private:
-#if !defined(WITH_SYSTEMD)
     void removeSocketFile();
-#endif // !defined(WITH_SYSTEMD)
     void completeHandler(client * client);
 
 private:
@@ -159,7 +162,6 @@ private:
     BoostNetworkFactories * _networkFactories;
 };
 
-#if !defined(WITH_SYSTEMD)
 void xmpp_daemon::removeSocketFile()
 {
     if (boost::filesystem::exists(_socketFile))
@@ -170,13 +172,11 @@ void xmpp_daemon::removeSocketFile()
     }
 
 }
-#endif // !defined(WITH_SYSTEMD)
 
 bool xmpp_daemon::prepare(bool systemd, bool daemon, bool foreground)
 {
-#if !defined(WITH_SYSTEMD)
-    removeSocketFile();
-#endif // !defined(WITH_SYSTEMD)
+    if(foreground)
+        removeSocketFile();
 
     bool configOk = true;
     if(systemd || daemon || foreground)
@@ -197,22 +197,31 @@ bool xmpp_daemon::prepare(bool systemd, bool daemon, bool foreground)
         return false;
 
 #if defined(WITH_SYSTEMD)
-    int n = sd_listen_fds(0);
-    if (n > 1)
+    if(foreground)
     {
-        std::cerr << "Too many file descriptors received." << std::endl;
-        return false;
-    }
-    else if (n == 1)
-    {
-        _socketHandle = SD_LISTEN_FDS_START + 0;
         _eventLoop = new SimpleEventLoop();
         _networkFactories = new BoostNetworkFactories(_eventLoop);
+        return true;
     }
     else
     {
-        std::cerr << "No file descriptors received." << std::endl;
-        return false;
+        int n = sd_listen_fds(0);
+        if (n > 1)
+        {
+            std::cerr << "Too many file descriptors received." << std::endl;
+            return false;
+        }
+        else if (n == 1)
+        {
+            _socketHandle = SD_LISTEN_FDS_START + 0;
+            _eventLoop = new SimpleEventLoop();
+            _networkFactories = new BoostNetworkFactories(_eventLoop);
+        }
+        else
+        {
+            std::cerr << "No file descriptors received." << std::endl;
+            return false;
+        }
     }
 #else
     _eventLoop = new SimpleEventLoop();
@@ -339,13 +348,16 @@ int xmpp_daemon::run()
     int ret = 0;
     boost::shared_ptr<boost::asio::io_service> io_service = _networkFactories->getIOServiceThread()->getIOService();
 
-    xmpp_agent agent(_config.xmppJid(), _config.xmppPassword(), _config.xmppStatusMessage(), _networkFactories);
+    xmpp_agent agent(_config, _networkFactories);
     xmpp_target_sender target_sender(agent, _config);
 
     try
     {
 #if defined(WITH_SYSTEMD)
-        _socket_server = new server(*io_service, _socketHandle, target_sender, _debug);
+        if(_socketHandle >= 0)
+            _socket_server = new server(*io_service, _socketHandle, target_sender, _debug);
+        else
+            _socket_server = new server(*io_service, _socketFile, target_sender, _debug);
 #else
         _socket_server = new server(*io_service, _socketFile, target_sender, _debug);
 #endif
